@@ -110,3 +110,16 @@
 - [x] Notificar erros de conexão
 - [ ] Notificar quando VPN cai (Kill Switch)
 - [ ] Permitir usuário desabilitar notificações
+
+
+## Fase 7: Correções e Integração OpenVPN Real
+
+- [x] Corrigir package name Android (com.muacovpn.app)
+- [x] Integrar OpenVPN real (remover simulação)
+- [x] Criar logos Unitel e Africell
+- [x] Implementar servidores reais de Angola
+- [x] Adicionar logs de conexão
+- [x] Validar seleção de servidor obrigatória
+- [x] Integrar redes sociais Unitel e Africell
+- [ ] Testar APK em dispositivo real
+- [ ] Gerar APK final funcional
