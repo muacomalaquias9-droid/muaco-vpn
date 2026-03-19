@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState, useCallback, useEffect } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { VPNConnection, VPNServer, VPNSettings, VPNStatus } from "@/lib/types";
+import { useNotifications } from "./use-notifications";
 
 const STORAGE_KEYS = {
   CONNECTION: "vpn_connection",
@@ -25,6 +26,7 @@ const DEFAULT_CONNECTION: VPNConnection = {
 };
 
 export function useVPN() {
+  const { sendVPNConnectedNotification, sendVPNDisconnectedNotification, sendVPNErrorNotification } = useNotifications();
   const [connection, setConnection] = useState<VPNConnection>(DEFAULT_CONNECTION);
   const [settings, setSettings] = useState<VPNSettings>(DEFAULT_SETTINGS);
   const [servers, setServers] = useState<VPNServer[]>([]);
@@ -106,6 +108,9 @@ export function useVPN() {
           downloadSpeed: Math.floor(Math.random() * 100) + 20,
         });
 
+        // Enviar notificação
+        await sendVPNConnectedNotification(server.country);
+
         // Atualizar servidor selecionado
         await AsyncStorage.setItem(STORAGE_KEYS.SELECTED_SERVER, JSON.stringify(server));
 
@@ -113,6 +118,7 @@ export function useVPN() {
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : "Erro ao conectar";
         setError(errorMsg);
+        await sendVPNErrorNotification(errorMsg);
         await saveConnection({
           ...connection,
           status: "error",
@@ -120,7 +126,7 @@ export function useVPN() {
         setLoading(false);
       }
     },
-    [connection, settings.protocol, saveConnection]
+    [connection, settings.protocol, saveConnection, sendVPNConnectedNotification, sendVPNErrorNotification]
   );
 
   const disconnect = useCallback(async () => {
@@ -135,13 +141,16 @@ export function useVPN() {
         currentIP: connection.originalIP,
       });
 
+      await sendVPNDisconnectedNotification();
+
       setLoading(false);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "Erro ao desconectar";
       setError(errorMsg);
+      await sendVPNErrorNotification(errorMsg);
       setLoading(false);
     }
-  }, [connection.originalIP, saveConnection]);
+  }, [connection.originalIP, saveConnection, sendVPNDisconnectedNotification, sendVPNErrorNotification]);
 
   const toggleFavorite = useCallback(
     async (serverId: string) => {

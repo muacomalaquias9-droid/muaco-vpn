@@ -12,11 +12,11 @@ const schemeFromBundleId = `manus${timestamp}`;
 
 const env = {
   // App branding - update these values directly (do not use env vars)
-  appName: "Angola VPN",
+  appName: "Muaco VPN",
   appSlug: "angola-vpn-app",
   // S3 URL of the app logo - set this to the URL returned by generate_image when creating custom logo
   // Leave empty to use the default icon from assets/images/icon.png
-  logoUrl: "https://d2xsxph8kpxj0f.cloudfront.net/310519663447126234/DRwRQefuFkw3P3fNqNh9Ah/icon-6dnJQtkz5WhXahpUCETXMa.png",
+  logoUrl: "https://d2xsxph8kpxj0f.cloudfront.net/310519663447126234/DRwRQefuFkw3P3fNqNh9Ah/icon-WwwQwtqR3GUDw273gs3snU.png",
   scheme: schemeFromBundleId,
   iosBundleId: bundleId,
   androidPackage: bundleId,
@@ -36,14 +36,14 @@ const config: ExpoConfig = {
   icon: "./assets/images/icon.png",
   scheme: env.scheme,
   userInterfaceStyle: "automatic",
-  description: "Uma aplicação VPN segura para proteger seus dados em Angola e outros países. Conexão rápida, servidores confiáveis e encriptação de nível militar.",
+  description: "Muaco VPN - Aplicação VPN segura para proteger seus dados em Angola e outros países. Conexão rápida, servidores confiáveis e encriptação de nível militar.",
   newArchEnabled: true,
   assetBundlePatterns: ["**/*"],
   ios: {
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
     infoPlist: {
-      NSLocalNetworkUsageDescription: "Angola VPN precisa acessar sua rede local para gerenciar conexões VPN.",
+      NSLocalNetworkUsageDescription: "Muaco VPN precisa acessar sua rede local para gerenciar conexões VPN.",
       NSBonjourServices: ["_vpn._tcp"],
       NSNetServiceBrowser: true,
       ITSAppUsesNonExemptEncryption: false,

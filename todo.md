@@ -73,3 +73,40 @@
 ## Status: Em Progresso
 
 Última atualização: 2026-03-19
+
+
+## Fase 3: Renomear para Muaco VPN
+
+- [x] Atualizar app.config.ts com nome "Muaco VPN"
+- [x] Gerar novo logo/ícone com branding Muaco
+- [x] Atualizar splash screen
+- [x] Atualizar cores da paleta (se necessário)
+- [x] Renomear projeto para muaco-vpn
+
+## Fase 4: Integração Real de VPN
+
+- [x] Instalar OpenVPN SDK ou expo-openvpn
+- [x] Implementar conexão real com servidores VPN Gate
+- [x] Criar serviço VPN em background
+- [x] Gerenciar certificados OpenVPN
+- [x] Implementar desconexão segura
+- [ ] Testar conexão real em dispositivo Android
+
+## Fase 5: Permissões em Runtime
+
+- [x] Implementar hook usePermissions
+- [x] Solicitar permissões ao abrir app
+- [x] Tratar recusas de permissões
+- [x] Mostrar mensagens explicativas
+- [x] Permitir usuário solicitar permissões novamente
+- [x] Verificar permissões antes de conectar VPN
+
+## Fase 6: Notificações Push
+
+- [x] Configurar expo-notifications
+- [x] Criar serviço de notificações
+- [x] Notificar ao conectar VPN
+- [x] Notificar ao desconectar VPN
+- [x] Notificar erros de conexão
+- [ ] Notificar quando VPN cai (Kill Switch)
+- [ ] Permitir usuário desabilitar notificações
