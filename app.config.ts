@@ -4,23 +4,7 @@ import type { ExpoConfig } from "expo/config";
 
 // Bundle ID format: space.manus.<project_name_dots>.<timestamp>
 // e.g., "my-app" created at 2024-01-15 10:30:45 -> "space.manus.my.app.t20240115103045"
-// Bundle ID can only contain letters, numbers, and dots
-// Android requires each dot-separated segment to start with a letter
-const rawBundleId = "space.manus.angola.vpn.app.t20260319161208";
-const bundleId =
-  rawBundleId
-    .replace(/[-_]/g, ".") // Replace hyphens/underscores with dots
-    .replace(/[^a-zA-Z0-9.]/g, "") // Remove invalid chars
-    .replace(/\.+/g, ".") // Collapse consecutive dots
-    .replace(/^\.+|\.+$/g, "") // Trim leading/trailing dots
-    .toLowerCase()
-    .split(".")
-    .map((segment) => {
-      // Android requires each segment to start with a letter
-      // Prefix with 'x' if segment starts with a digit
-      return /^[a-zA-Z]/.test(segment) ? segment : "x" + segment;
-    })
-    .join(".") || "space.manus.app";
+const bundleId = "{{bundle_id}}";
 // Extract timestamp from bundle ID and prefix with "manus" for deep link scheme
 // e.g., "space.manus.my.app.t20240115103045" -> "manus20240115103045"
 const timestamp = bundleId.split(".").pop()?.replace(/^t/, "") ?? "";
@@ -28,35 +12,46 @@ const schemeFromBundleId = `manus${timestamp}`;
 
 const env = {
   // App branding - update these values directly (do not use env vars)
-  appName: "Angola VPN Segura",
+  appName: "Angola VPN",
   appSlug: "angola-vpn-app",
   // S3 URL of the app logo - set this to the URL returned by generate_image when creating custom logo
   // Leave empty to use the default icon from assets/images/icon.png
-  logoUrl: "",
+  logoUrl: "https://d2xsxph8kpxj0f.cloudfront.net/310519663447126234/DRwRQefuFkw3P3fNqNh9Ah/icon-6dnJQtkz5WhXahpUCETXMa.png",
   scheme: schemeFromBundleId,
   iosBundleId: bundleId,
   androidPackage: bundleId,
+  // VPN Configuration
+  vpnProtocol: "openvpn",
+  vpnPort: 1194,
+  vpnEncryption: "AES-256",
 };
 
 const config: ExpoConfig = {
   name: env.appName,
   slug: env.appSlug,
   version: "1.0.0",
+  runtimeVersion: "1.0.0",
   orientation: "portrait",
+  primaryColor: "#0066CC",
   icon: "./assets/images/icon.png",
   scheme: env.scheme,
   userInterfaceStyle: "automatic",
+  description: "Uma aplicação VPN segura para proteger seus dados em Angola e outros países. Conexão rápida, servidores confiáveis e encriptação de nível militar.",
   newArchEnabled: true,
+  assetBundlePatterns: ["**/*"],
   ios: {
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
-    "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
-      }
+    infoPlist: {
+      NSLocalNetworkUsageDescription: "Angola VPN precisa acessar sua rede local para gerenciar conexões VPN.",
+      NSBonjourServices: ["_vpn._tcp"],
+      NSNetServiceBrowser: true,
+      ITSAppUsesNonExemptEncryption: false,
+    },
   },
   android: {
     adaptiveIcon: {
-      backgroundColor: "#E6F4FE",
+      backgroundColor: "#0066CC",
       foregroundImage: "./assets/images/android-icon-foreground.png",
       backgroundImage: "./assets/images/android-icon-background.png",
       monochromeImage: "./assets/images/android-icon-monochrome.png",
@@ -64,7 +59,21 @@ const config: ExpoConfig = {
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     package: env.androidPackage,
-    permissions: ["POST_NOTIFICATIONS"],
+    permissions: [
+      "POST_NOTIFICATIONS",
+      "INTERNET",
+      "ACCESS_NETWORK_STATE",
+      "ACCESS_WIFI_STATE",
+      "CHANGE_NETWORK_STATE",
+      "BIND_VPN_SERVICE",
+      "FOREGROUND_SERVICE",
+      "FOREGROUND_SERVICE_CONNECTED_DEVICE",
+      "WAKE_LOCK",
+      "RECEIVE_BOOT_COMPLETED",
+      "VIBRATE",
+      "READ_PHONE_STATE",
+      "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
+    ],
     intentFilters: [
       {
         action: "VIEW",
@@ -77,12 +86,17 @@ const config: ExpoConfig = {
         ],
         category: ["BROWSABLE", "DEFAULT"],
       },
+      {
+        action: "android.net.vpn.BIND_VPN_SERVICE",
+        category: ["android.intent.category.DEFAULT"],
+      },
     ],
   },
   web: {
     bundler: "metro",
     output: "static",
     favicon: "./assets/images/favicon.png",
+    backgroundColor: "#0066CC",
   },
   plugins: [
     "expo-router",
@@ -105,9 +119,9 @@ const config: ExpoConfig = {
         image: "./assets/images/splash-icon.png",
         imageWidth: 200,
         resizeMode: "contain",
-        backgroundColor: "#ffffff",
+        backgroundColor: "#0066CC",
         dark: {
-          backgroundColor: "#000000",
+          backgroundColor: "#0F1419",
         },
       },
     ],
@@ -117,6 +131,9 @@ const config: ExpoConfig = {
         android: {
           buildArchs: ["armeabi-v7a", "arm64-v8a"],
           minSdkVersion: 24,
+          targetSdkVersion: 34,
+          compileSdkVersion: 34,
+          usesCleartextTraffic: true,
         },
       },
     ],
@@ -124,7 +141,9 @@ const config: ExpoConfig = {
   experiments: {
     typedRoutes: true,
     reactCompiler: true,
+    tsconfigPaths: true,
   },
 };
 
+// Export configuration with VPN-specific settings
 export default config;
