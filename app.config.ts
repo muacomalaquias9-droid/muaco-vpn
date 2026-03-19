@@ -27,15 +27,11 @@ const config: ExpoConfig = {
   name: env.appName,
   slug: env.appSlug,
   version: "1.0.0",
-  runtimeVersion: "1.0.0",
   orientation: "portrait",
-  primaryColor: "#0066CC",
   icon: "./assets/images/icon.png",
   scheme: env.scheme,
   userInterfaceStyle: "automatic",
-  description: "Muaco VPN - Aplicação VPN segura para proteger seus dados em Angola e outros países. Conexão rápida, servidores confiáveis e encriptação de nível militar.",
   newArchEnabled: true,
-  assetBundlePatterns: ["**/*"],
   ios: {
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
@@ -57,19 +53,11 @@ const config: ExpoConfig = {
     predictiveBackGestureEnabled: false,
     package: env.androidPackage,
     permissions: [
-      "POST_NOTIFICATIONS",
       "INTERNET",
       "ACCESS_NETWORK_STATE",
-      "ACCESS_WIFI_STATE",
-      "CHANGE_NETWORK_STATE",
       "BIND_VPN_SERVICE",
       "FOREGROUND_SERVICE",
-      "FOREGROUND_SERVICE_CONNECTED_DEVICE",
       "WAKE_LOCK",
-      "RECEIVE_BOOT_COMPLETED",
-      "VIBRATE",
-      "READ_PHONE_STATE",
-      "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
     ],
     intentFilters: [
       {
@@ -83,33 +71,16 @@ const config: ExpoConfig = {
         ],
         category: ["BROWSABLE", "DEFAULT"],
       },
-      {
-        action: "android.net.vpn.BIND_VPN_SERVICE",
-        category: ["android.intent.category.DEFAULT"],
-      },
     ],
   },
   web: {
     bundler: "metro",
     output: "static",
     favicon: "./assets/images/favicon.png",
-    backgroundColor: "#0066CC",
   },
   plugins: [
     "expo-router",
-    [
-      "expo-audio",
-      {
-        microphonePermission: "Allow $(PRODUCT_NAME) to access your microphone.",
-      },
-    ],
-    [
-      "expo-video",
-      {
-        supportsBackgroundPlayback: true,
-        supportsPictureInPicture: true,
-      },
-    ],
+
     [
       "expo-splash-screen",
       {
@@ -130,15 +101,12 @@ const config: ExpoConfig = {
           minSdkVersion: 24,
           targetSdkVersion: 34,
           compileSdkVersion: 34,
-          usesCleartextTraffic: true,
         },
       },
     ],
   ],
   experiments: {
     typedRoutes: true,
-    reactCompiler: true,
-    tsconfigPaths: true,
   },
 };
 
