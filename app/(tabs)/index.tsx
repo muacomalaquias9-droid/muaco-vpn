@@ -1,223 +1,48 @@
-import { ScrollView, Text, View, Pressable, Image, Switch } from "react-native";
-import { useState, useEffect } from "react";
-import * as Haptics from "expo-haptics";
+import { ScrollView, Text, View, TouchableOpacity } from "react-native";
+
 import { ScreenContainer } from "@/components/screen-container";
-import { VPNPermissionModal } from "@/components/vpn-permission-modal";
-import { useColors } from "@/hooks/use-colors";
-import { useOpenVPNReal, OPENVPN_CONFIGS, type OpenVPNConfig } from "@/hooks/use-openvpn-real";
-import { useKillSwitch } from "@/hooks/use-kill-switch";
-import { VPNLogger, type VPNLog } from "@/lib/vpn-logger";
 
-const OPERATOR_LOGOS: Record<string, any> = {
-  Unitel: require("@/assets/images/unitel-logo.png"),
-  Africell: require("@/assets/images/africell-logo.png"),
-};
-
+/**
+ * Home Screen - NativeWind Example
+ *
+ * This template uses NativeWind (Tailwind CSS for React Native).
+ * You can use familiar Tailwind classes directly in className props.
+ *
+ * Key patterns:
+ * - Use `className` instead of `style` for most styling
+ * - Theme colors: use tokens directly (bg-background, text-foreground, bg-primary, etc.); no dark: prefix needed
+ * - Responsive: standard Tailwind breakpoints work on web
+ * - Custom colors defined in tailwind.config.js
+ */
 export default function HomeScreen() {
-  const colors = useColors();
-  const { isConnected, isConnecting, selectedConfig, error, connect, disconnect } =
-    useOpenVPNReal();
-  const { killSwitchEnabled, toggleKillSwitch, isKillSwitchActive } =
-    useKillSwitch(isConnected);
-  const [logs, setLogs] = useState<VPNLog[]>([]);
-  const [showLogs, setShowLogs] = useState(false);
-  const [showPermission, setShowPermission] = useState(false);
-  const [pendingConfig, setPendingConfig] = useState<OpenVPNConfig | null>(null);
-
-  const servers = Object.values(OPENVPN_CONFIGS);
-
-  useEffect(() => {
-    loadLogs();
-  }, []);
-
-  useEffect(() => {
-    if (isConnected || isConnecting) {
-      loadLogs();
-    }
-  }, [isConnected, isConnecting]);
-
-  const loadLogs = async () => {
-    const allLogs = await VPNLogger.getLogs();
-    setLogs(allLogs);
-  };
-
-  const handleConnectPress = (config: OpenVPNConfig) => {
-    if (isConnected) return;
-    setPendingConfig(config);
-    setShowPermission(true);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-  };
-
-  const handlePermissionAllow = async () => {
-    if (!pendingConfig) return;
-    setShowPermission(false);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    await connect(pendingConfig);
-    await loadLogs();
-  };
-
-  const handlePermissionDeny = () => {
-    setShowPermission(false);
-    setPendingConfig(null);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-  };
-
-  const handleDisconnect = async () => {
-    await disconnect();
-    await loadLogs();
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  };
-
-  const handleKillSwitchToggle = async (value: boolean) => {
-    await toggleKillSwitch(value);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  };
-
   return (
-    <ScreenContainer className="p-4">
-      <ScrollView showsVerticalScrollIndicator={false}>
-        <View className="gap-6">
-          <View>
-            <Text className="text-3xl font-bold text-foreground">Muaco VPN</Text>
-            <Text className="text-xs text-muted">Apenas Angola 🇦🇴</Text>
-          </View>
-
-          {/* Status */}
-          <View className="bg-primary/10 rounded-2xl p-6 border border-primary/20">
-            <Text className="text-sm text-muted mb-2">Status</Text>
-            <Text className="text-2xl font-bold text-foreground mb-4">
-              {isConnecting ? "⏳ Conectando..." : isConnected ? "🔒 Conectado" : "🔓 Desconectado"}
+    <ScreenContainer className="p-6">
+      <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
+        <View className="flex-1 gap-8">
+          {/* Hero Section */}
+          <View className="items-center gap-2">
+            <Text className="text-4xl font-bold text-foreground">Welcome</Text>
+            <Text className="text-base text-muted text-center">
+              Edit app/(tabs)/index.tsx to get started
             </Text>
-            {isConnected && selectedConfig && (
-              <View className="gap-1">
-                <Text className="text-xs text-muted">Servidor: {selectedConfig.serverName}</Text>
-                <Text className="text-xs text-muted">Operador: {selectedConfig.operator}</Text>
-                <Text className="text-xs text-muted">
-                  Protocolo: {selectedConfig.protocol.toUpperCase()}:{selectedConfig.port}
-                </Text>
-                <Text className="text-xs text-muted">
-                  DNS: {selectedConfig.dnsServers.join(", ")}
-                </Text>
-              </View>
-            )}
-            {error && <Text className="text-xs text-error mt-2">Erro: {error}</Text>}
-            {isKillSwitchActive && (
-              <View className="bg-error/20 rounded-lg p-2 mt-3 border border-error">
-                <Text className="text-xs text-error font-bold">🛑 Kill Switch Ativo - Tráfego Bloqueado</Text>
-              </View>
-            )}
           </View>
 
-          {/* Botão Desconectar */}
-          {isConnected && (
-            <Pressable onPress={handleDisconnect} disabled={isConnecting}>
-              {({ pressed }) => (
-                <View
-                  className="bg-error rounded-2xl py-4 items-center"
-                  style={{ opacity: pressed ? 0.8 : 1 }}
-                >
-                  <Text className="text-white font-bold text-lg">Desconectar</Text>
-                </View>
-              )}
-            </Pressable>
-          )}
-
-          {/* Kill Switch */}
-          <View className="bg-surface rounded-2xl p-4 border border-border gap-3">
-            <View className="flex-row items-center justify-between">
-              <View className="flex-1">
-                <Text className="text-sm font-bold text-foreground">Kill Switch</Text>
-                <Text className="text-xs text-muted">Bloqueia tráfego se VPN cair</Text>
-              </View>
-              <Switch
-                value={killSwitchEnabled}
-                onValueChange={handleKillSwitchToggle}
-                trackColor={{ false: colors.border, true: colors.primary }}
-                thumbColor={killSwitchEnabled ? colors.primary : colors.muted}
-              />
-            </View>
-            {killSwitchEnabled && (
-              <Text className="text-xs text-warning bg-warning/10 p-2 rounded">
-                ⚠️ Kill Switch ativo: Se a VPN desconectar, todo tráfego será bloqueado
-              </Text>
-            )}
+          {/* Example Card */}
+          <View className="w-full max-w-sm self-center bg-surface rounded-2xl p-6 shadow-sm border border-border">
+            <Text className="text-lg font-semibold text-foreground mb-2">NativeWind Ready</Text>
+            <Text className="text-sm text-muted leading-relaxed">
+              Use Tailwind CSS classes directly in your React Native components.
+            </Text>
           </View>
 
-          {/* Servidores */}
-          <View className="gap-3">
-            <Text className="text-sm font-bold text-foreground">Servidores OpenVPN Angola</Text>
-            {servers.map((config) => (
-              <Pressable
-                key={config.serverId}
-                onPress={() => handleConnectPress(config)}
-                disabled={isConnected || isConnecting}
-              >
-                {({ pressed }) => (
-                  <View
-                    className={`flex-row items-center gap-3 p-3 rounded-xl border ${
-                      selectedConfig?.serverId === config.serverId
-                        ? "bg-primary/10 border-primary"
-                        : "bg-surface border-border"
-                    }`}
-                    style={{ opacity: pressed ? 0.7 : 1 }}
-                  >
-                    <Image
-                      source={OPERATOR_LOGOS[config.operator]}
-                      style={{ width: 40, height: 40, borderRadius: 8 }}
-                    />
-                    <View className="flex-1">
-                      <Text className="text-sm font-bold text-foreground">{config.serverName}</Text>
-                      <Text className="text-xs text-muted">
-                        {config.protocol.toUpperCase()}:{config.port}
-                      </Text>
-                    </View>
-                    {selectedConfig?.serverId === config.serverId && (
-                      <Text className="text-primary">✓</Text>
-                    )}
-                  </View>
-                )}
-              </Pressable>
-            ))}
-          </View>
-
-          {/* Logs */}
-          <View className="gap-3">
-            <Pressable onPress={() => setShowLogs(!showLogs)}>
-              <Text className="text-sm font-bold text-primary">
-                {showLogs ? "Ocultar Logs" : "Ver Logs"} ({logs.length})
-              </Text>
-            </Pressable>
-
-            {showLogs && (
-              <View className="bg-surface rounded-xl p-3 gap-2 max-h-48">
-                {logs.length === 0 ? (
-                  <Text className="text-xs text-muted">Sem logs</Text>
-                ) : (
-                  logs.slice(0, 10).map((log) => (
-                    <View key={log.id} className="border-b border-border pb-2">
-                      <Text className="text-xs font-bold text-foreground">
-                        {log.action === "connect" ? "🔗" : "🔌"} {log.server}
-                      </Text>
-                      <Text className="text-xs text-muted">{log.message}</Text>
-                      <Text className="text-xs text-muted">
-                        {VPNLogger.formatTime(log.timestamp)}
-                      </Text>
-                    </View>
-                  ))
-                )}
-              </View>
-            )}
+          {/* Example Button */}
+          <View className="items-center">
+            <TouchableOpacity className="bg-primary px-6 py-3 rounded-full active:opacity-80">
+              <Text className="text-background font-semibold">Get Started</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </ScrollView>
-
-      {/* Modal de Permissão */}
-      <VPNPermissionModal
-        visible={showPermission}
-        serverName={pendingConfig?.serverName || ""}
-        onAllow={handlePermissionAllow}
-        onDeny={handlePermissionDeny}
-      />
     </ScreenContainer>
   );
 }
