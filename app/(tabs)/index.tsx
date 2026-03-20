@@ -1,9 +1,10 @@
-import { ScrollView, Text, View, Pressable, Switch, FlatList } from "react-native";
+import { ScrollView, Text, View, Pressable, Switch, FlatList, Modal } from "react-native";
 import { useState, useEffect } from "react";
 import * as Haptics from "expo-haptics";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
+import { useVPNPermission } from "@/hooks/use-vpn-permission";
 
 interface VPNServer {
   id: string;
@@ -53,6 +54,8 @@ const DEFAULT_APPS = [
 
 export default function HomeScreen() {
   const colors = useColors();
+  const { vpnPermissionGranted, requestVPNPermission, isRequesting } = useVPNPermission();
+  const [showPermissionModal, setShowPermissionModal] = useState(!vpnPermissionGranted);
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [selectedServer, setSelectedServer] = useState<VPNServer | null>(SERVERS[0]);
@@ -122,6 +125,11 @@ export default function HomeScreen() {
   const handleConnect = async () => {
     if (!selectedServer) return;
 
+    if (!vpnPermissionGranted) {
+      setShowPermissionModal(true);
+      return;
+    }
+
     setIsConnecting(true);
     setConnectionStartTime(Date.now());
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -167,6 +175,51 @@ export default function HomeScreen() {
 
   return (
     <ScreenContainer className="p-4">
+      {/* Modal de Permissão VPN */}
+      <Modal visible={showPermissionModal} transparent animationType="fade">
+        <View className="flex-1 bg-black/50 justify-center items-center p-4">
+          <View className="bg-surface rounded-2xl p-6 gap-4 w-full max-w-sm border border-border">
+            <Text className="text-xl font-bold text-foreground">Permissão VPN Necessária</Text>
+            <Text className="text-sm text-muted leading-relaxed">
+              Muaco VPN precisa de permissão para gerenciar a conexão VPN do seu dispositivo. Esta
+              permissão é necessária para conectar aos servidores OpenVPN de Angola.
+            </Text>
+
+            <View className="gap-3">
+              <Pressable
+                onPress={async () => {
+                  await requestVPNPermission();
+                  setShowPermissionModal(false);
+                }}
+                disabled={isRequesting}
+              >
+                {({ pressed }) => (
+                  <View
+                    className="bg-primary rounded-xl py-3 items-center"
+                    style={{ opacity: pressed ? 0.8 : 1 }}
+                  >
+                    <Text className="text-white font-bold">
+                      {isRequesting ? "Solicitando..." : "Conceder Permissão"}
+                    </Text>
+                  </View>
+                )}
+              </Pressable>
+
+              <Pressable onPress={() => setShowPermissionModal(false)}>
+                {({ pressed }) => (
+                  <View
+                    className="border border-border rounded-xl py-3 items-center"
+                    style={{ opacity: pressed ? 0.7 : 1 }}
+                  >
+                    <Text className="text-foreground font-bold">Depois</Text>
+                  </View>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <ScrollView showsVerticalScrollIndicator={false}>
         <View className="gap-6">
           <View>
@@ -174,11 +227,21 @@ export default function HomeScreen() {
             <Text className="text-xs text-muted">Apenas Angola 🇦🇴</Text>
           </View>
 
+          {/* Aviso de Permissão */}
+          {!vpnPermissionGranted && (
+            <View className="bg-warning/10 rounded-2xl p-4 border border-warning gap-2">
+              <Text className="text-sm font-bold text-warning">⚠️ Permissão VPN Necessária</Text>
+              <Text className="text-xs text-muted">
+                Conceda permissão para usar a VPN. Clique em "Conectar" para solicitar.
+              </Text>
+            </View>
+          )}
+
           {/* Status */}
           <View className="bg-primary/10 rounded-2xl p-6 border border-primary/20">
             <Text className="text-sm text-muted mb-2">Status</Text>
             <Text className="text-2xl font-bold text-foreground">
-              {isConnecting ? "⏳ Conectando..." : isConnected ? "🔒 Conectado" : "🔓 Desconectado"}
+              {isConnecting ? "⏳ Conectando..." : isConnected ? "🔒 VPN Ligada" : "🔓 Desconectado"}
             </Text>
             {isConnected && selectedServer && (
               <View className="gap-1 mt-3">
@@ -186,6 +249,7 @@ export default function HomeScreen() {
                 <Text className="text-xs text-muted">
                   Protocolo: {selectedServer.protocol}:{selectedServer.port}
                 </Text>
+                <Text className="text-xs text-success mt-2">✓ VPN Ativa no Dispositivo</Text>
               </View>
             )}
           </View>
