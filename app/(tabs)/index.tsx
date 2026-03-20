@@ -1,10 +1,11 @@
-import { ScrollView, Text, View, Pressable, Switch, FlatList, Modal } from "react-native";
+import { ScrollView, Text, View, Pressable, Switch, FlatList, Modal, ActivityIndicator } from "react-native";
 import { useState, useEffect } from "react";
 import * as Haptics from "expo-haptics";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { useVPNPermission } from "@/hooks/use-vpn-permission";
+import { usePushNotifications } from "@/hooks/use-push-notifications";
 
 interface VPNServer {
   id: string;
@@ -29,39 +30,30 @@ interface VPNStats {
   lastConnected: number;
 }
 
+interface InstalledApp {
+  name: string;
+  packageName: string;
+}
+
 const SERVERS: VPNServer[] = [
   { id: "unitel", name: "Unitel NET", operator: "Unitel", protocol: "UDP", port: 1194 },
   { id: "africell1", name: "Africell 01", operator: "Africell", protocol: "UDP", port: 1194 },
   { id: "africell2", name: "Africell 02", operator: "Africell", protocol: "TCP", port: 443 },
 ];
 
-const DEFAULT_APPS = [
-  "WhatsApp", "Facebook", "Instagram", "Twitter", "Maps", "Spotify", "Netflix", "Chrome",
-  "Gmail", "YouTube", "Reddit", "Pinterest", "LinkedIn", "Snapchat", "TikTok", "Telegram",
-  "Viber", "Skype", "Discord", "Slack", "Amazon", "eBay", "AliExpress", "Uber", "Lyft",
-  "Airbnb", "Booking", "Expedia", "Waze", "Duolingo", "Coursera", "Udemy", "edX", "Fitbit",
-  "MyFitnessPal", "Strava", "Nike Run", "Google Photos", "Lightroom", "Photoshop", "Snapseed",
-  "VSCO", "Canva", "Adobe Express", "Word", "Excel", "PowerPoint", "Google Docs", "Sheets",
-  "OneDrive", "Dropbox", "Google Drive", "iCloud", "Mega", "Telegram", "Signal", "Wire",
-  "Threema", "Wickr", "Session", "Briar", "Element", "Jami", "Tox", "Ricochet", "Pond",
-  "Bitmessage", "Retroshare", "I2P", "Tor Browser", "Mullvad VPN", "ProtonVPN", "ExpressVPN",
-  "NordVPN", "Surfshark", "CyberGhost", "Private Internet Access", "IPVanish", "HotspotShield",
-  "Windscribe", "TunnelBear", "ZenMate", "Psiphon", "Hotspot Shield", "Opera VPN", "Avast VPN",
-  "AVG VPN", "McAfee VPN", "Norton VPN", "Kaspersky VPN", "F-Secure VPN", "Bitdefender VPN",
-  "ESET VPN", "Trend Micro VPN", "Sophos VPN", "Palo Alto VPN", "Cisco VPN", "Fortinet VPN",
-  "Juniper VPN", "Check Point VPN", "SonicWall VPN", "Watchguard VPN", "Barracuda VPN",
-];
-
 export default function HomeScreen() {
   const colors = useColors();
   const { vpnPermissionGranted, requestVPNPermission, isRequesting } = useVPNPermission();
+  const { sendNotification } = usePushNotifications();
   const [showPermissionModal, setShowPermissionModal] = useState(!vpnPermissionGranted);
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [selectedServer, setSelectedServer] = useState<VPNServer | null>(SERVERS[0]);
   const [killSwitchEnabled, setKillSwitchEnabled] = useState(false);
   const [splitTunnelingEnabled, setSplitTunnelingEnabled] = useState(false);
-  const [bypassedApps, setBypassedApps] = useState<string[]>([]);
+  const [bypassedApps, setBypassedApps] = useState<InstalledApp[]>([]);
+  const [allApps, setAllApps] = useState<InstalledApp[]>([]);
+  const [loadingApps, setLoadingApps] = useState(false);
   const [logs, setLogs] = useState<VPNLog[]>([]);
   const [stats, setStats] = useState<VPNStats>({
     totalConnections: 0,
@@ -76,6 +68,7 @@ export default function HomeScreen() {
 
   useEffect(() => {
     loadData();
+    loadInstalledApps();
   }, []);
 
   const loadData = async () => {
@@ -95,6 +88,122 @@ export default function HomeScreen() {
       if (savedStats) setStats(JSON.parse(savedStats));
     } catch (error) {
       console.error("Erro ao carregar dados:", error);
+    }
+  };
+
+  const loadInstalledApps = async () => {
+    setLoadingApps(true);
+    try {
+      const mockApps: InstalledApp[] = [
+        { name: "WhatsApp", packageName: "com.whatsapp" },
+        { name: "Facebook", packageName: "com.facebook.katana" },
+        { name: "Instagram", packageName: "com.instagram.android" },
+        { name: "Twitter", packageName: "com.twitter.android" },
+        { name: "Maps", packageName: "com.google.android.apps.maps" },
+        { name: "Spotify", packageName: "com.spotify.music" },
+        { name: "Netflix", packageName: "com.netflix.mediaclient" },
+        { name: "Chrome", packageName: "com.android.chrome" },
+        { name: "Gmail", packageName: "com.google.android.gm" },
+        { name: "YouTube", packageName: "com.google.android.youtube" },
+        { name: "Reddit", packageName: "com.reddit.frontpage" },
+        { name: "Pinterest", packageName: "com.pinterest" },
+        { name: "LinkedIn", packageName: "com.linkedin.android" },
+        { name: "Snapchat", packageName: "com.snapchat.android" },
+        { name: "TikTok", packageName: "com.ss.android.ugc.trill" },
+        { name: "Telegram", packageName: "org.telegram.messenger" },
+        { name: "Viber", packageName: "com.viber.voip" },
+        { name: "Skype", packageName: "com.skype.raider" },
+        { name: "Discord", packageName: "com.discord" },
+        { name: "Slack", packageName: "com.slack" },
+        { name: "Amazon", packageName: "com.amazon.mShop.android.shopping" },
+        { name: "eBay", packageName: "com.ebay.mobile" },
+        { name: "AliExpress", packageName: "com.alibaba.aliexpresshd" },
+        { name: "Uber", packageName: "com.ubercab" },
+        { name: "Lyft", packageName: "com.lyft.android" },
+        { name: "Airbnb", packageName: "com.airbnb.android" },
+        { name: "Booking", packageName: "com.booking" },
+        { name: "Expedia", packageName: "com.expedia.bookings" },
+        { name: "Waze", packageName: "com.waze" },
+        { name: "Duolingo", packageName: "com.duolingo.android" },
+        { name: "Coursera", packageName: "org.coursera.android" },
+        { name: "Udemy", packageName: "com.udemy.android" },
+        { name: "edX", packageName: "org.edx.mobile" },
+        { name: "Fitbit", packageName: "com.fitbit.FitbitMobile" },
+        { name: "MyFitnessPal", packageName: "com.myfitnesspal.android" },
+        { name: "Strava", packageName: "com.strava" },
+        { name: "Nike Run", packageName: "com.nike.plusgps" },
+        { name: "Google Photos", packageName: "com.google.android.apps.photos" },
+        { name: "Lightroom", packageName: "com.adobe.lrmobile" },
+        { name: "Photoshop", packageName: "com.adobe.photoshop.touch" },
+        { name: "Snapseed", packageName: "com.niksoftware.snapseed" },
+        { name: "VSCO", packageName: "com.vsco.cam" },
+        { name: "Canva", packageName: "com.canva.editor" },
+        { name: "Adobe Express", packageName: "com.adobe.creativeapps.express" },
+        { name: "Word", packageName: "com.microsoft.office.word" },
+        { name: "Excel", packageName: "com.microsoft.office.excel" },
+        { name: "PowerPoint", packageName: "com.microsoft.office.powerpoint" },
+        { name: "Google Docs", packageName: "com.google.android.apps.docs" },
+        { name: "Google Sheets", packageName: "com.google.android.apps.docs.editors.sheets" },
+        { name: "OneDrive", packageName: "com.microsoft.skydrive" },
+        { name: "Dropbox", packageName: "com.dropbox.android" },
+        { name: "Google Drive", packageName: "com.google.android.apps.docs.editors.sheets" },
+        { name: "iCloud", packageName: "com.apple.iCloud" },
+        { name: "Mega", packageName: "mega.privacy.android.app" },
+        { name: "Signal", packageName: "org.thoughtcrime.securesms" },
+        { name: "Wire", packageName: "com.wire" },
+        { name: "Threema", packageName: "ch.threema.app" },
+        { name: "Wickr", packageName: "com.wickr.pro" },
+        { name: "Session", packageName: "network.loki.messenger" },
+        { name: "Briar", packageName: "org.briarproject.briar.android" },
+        { name: "Element", packageName: "im.vector.app" },
+        { name: "Jami", packageName: "cx.ring" },
+        { name: "Tox", packageName: "im.gultom.tox" },
+        { name: "Ricochet", packageName: "com.ricochet.im" },
+        { name: "Pond", packageName: "im.ricochet.pond" },
+        { name: "Bitmessage", packageName: "org.bitmessage.android" },
+        { name: "Retroshare", packageName: "retroshare.android.gui" },
+        { name: "I2P", packageName: "net.i2p.android" },
+        { name: "Tor Browser", packageName: "org.torproject.torbrowser" },
+        { name: "Mullvad VPN", packageName: "net.mullvad.mullvadvpn" },
+        { name: "ProtonVPN", packageName: "com.protonvpn.android" },
+        { name: "ExpressVPN", packageName: "com.expressvpn.vpn" },
+        { name: "NordVPN", packageName: "com.nordvpn.android" },
+        { name: "Surfshark", packageName: "com.surfshark.vpnclient.android" },
+        { name: "CyberGhost", packageName: "de.mobilenetworking.cyberghost" },
+        { name: "PIA", packageName: "com.privateinternetaccess.android" },
+        { name: "IPVanish", packageName: "com.ipvanish.android.vpn" },
+        { name: "HotspotShield", packageName: "hotspotshield.android.vpn" },
+        { name: "Windscribe", packageName: "com.windscribe.vpn" },
+        { name: "TunnelBear", packageName: "com.tunnelbear.android" },
+        { name: "ZenMate", packageName: "com.zenmate.android" },
+        { name: "Psiphon", packageName: "com.psiphon3" },
+        { name: "Opera VPN", packageName: "com.opera.max" },
+        { name: "Avast VPN", packageName: "com.avast.android.vpn" },
+        { name: "AVG VPN", packageName: "com.avg.android.vpn" },
+        { name: "McAfee VPN", packageName: "com.mcafee.android.vpn" },
+        { name: "Norton VPN", packageName: "com.symantec.mobilesecurity" },
+        { name: "Kaspersky VPN", packageName: "com.kaspersky.android.vpn" },
+        { name: "F-Secure VPN", packageName: "com.fsecure.android.vpn" },
+        { name: "Bitdefender VPN", packageName: "com.bitdefender.vpn" },
+        { name: "ESET VPN", packageName: "com.eset.android.vpn" },
+        { name: "Trend Micro VPN", packageName: "com.trendmicro.android.vpn" },
+        { name: "Sophos VPN", packageName: "com.sophos.android.vpn" },
+        { name: "Palo Alto VPN", packageName: "com.paloaltonetworks.android.vpn" },
+        { name: "Cisco VPN", packageName: "com.cisco.android.vpn" },
+        { name: "Fortinet VPN", packageName: "com.fortinet.android.vpn" },
+        { name: "Juniper VPN", packageName: "com.juniper.android.vpn" },
+        { name: "Check Point VPN", packageName: "com.checkpoint.android.vpn" },
+        { name: "SonicWall VPN", packageName: "com.sonicwall.android.vpn" },
+        { name: "Watchguard VPN", packageName: "com.watchguard.android.vpn" },
+        { name: "Barracuda VPN", packageName: "com.barracuda.android.vpn" },
+      ];
+
+      setAllApps(mockApps);
+    } catch (error) {
+      console.error("Erro ao carregar apps:", error);
+      setAllApps([]);
+    } finally {
+      setLoadingApps(false);
     }
   };
 
@@ -138,6 +247,8 @@ export default function HomeScreen() {
       setIsConnected(true);
       setIsConnecting(false);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      sendNotification("🔒 VPN Conectada", `Conectado a ${selectedServer?.name}`);
+      addLog("connect", selectedServer?.name || "Desconhecido", 0);
     }, 5000);
   };
 
@@ -146,6 +257,7 @@ export default function HomeScreen() {
       const duration = Math.floor((Date.now() - connectionStartTime) / 1000);
       addLog("disconnect", selectedServer?.name || "Desconhecido", duration);
       updateStats(duration);
+      sendNotification("🔓 VPN Desconectada", `Desconectado após ${Math.floor(duration / 60)}m`);
     }
     setIsConnected(false);
     setConnectionStartTime(null);
@@ -164,10 +276,11 @@ export default function HomeScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
-  const toggleAppBypass = (appName: string) => {
-    const updated = bypassedApps.includes(appName)
-      ? bypassedApps.filter((app) => app !== appName)
-      : [...bypassedApps, appName];
+  const toggleAppBypass = (app: InstalledApp) => {
+    const isAlreadyBypassed = bypassedApps.some((a) => a.packageName === app.packageName);
+    const updated = isAlreadyBypassed
+      ? bypassedApps.filter((a) => a.packageName !== app.packageName)
+      : [...bypassedApps, app];
     setBypassedApps(updated);
     AsyncStorage.setItem("vpn_bypassed_apps", JSON.stringify(updated));
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -178,11 +291,13 @@ export default function HomeScreen() {
       {/* Modal de Permissão VPN */}
       <Modal visible={showPermissionModal} transparent animationType="fade">
         <View className="flex-1 bg-black/50 justify-center items-center p-4">
-          <View className="bg-surface rounded-2xl p-6 gap-4 w-full max-w-sm border border-border">
-            <Text className="text-xl font-bold text-foreground">Permissão VPN Necessária</Text>
-            <Text className="text-sm text-muted leading-relaxed">
-              Muaco VPN precisa de permissão para gerenciar a conexão VPN do seu dispositivo. Esta
-              permissão é necessária para conectar aos servidores OpenVPN de Angola.
+          <View className="bg-surface rounded-3xl p-6 gap-4 w-full max-w-sm border border-border">
+            <View className="items-center mb-2">
+              <Text className="text-4xl mb-2">🔐</Text>
+              <Text className="text-2xl font-bold text-foreground text-center">Permissão VPN</Text>
+            </View>
+            <Text className="text-sm text-muted leading-relaxed text-center">
+              Muaco VPN precisa de permissão para gerenciar a conexão VPN do seu dispositivo.
             </Text>
 
             <View className="gap-3">
@@ -195,11 +310,11 @@ export default function HomeScreen() {
               >
                 {({ pressed }) => (
                   <View
-                    className="bg-primary rounded-xl py-3 items-center"
+                    className="bg-primary rounded-2xl py-4 items-center"
                     style={{ opacity: pressed ? 0.8 : 1 }}
                   >
-                    <Text className="text-white font-bold">
-                      {isRequesting ? "Solicitando..." : "Conceder Permissão"}
+                    <Text className="text-white font-bold text-lg">
+                      {isRequesting ? "Solicitando..." : "Conceder"}
                     </Text>
                   </View>
                 )}
@@ -208,7 +323,7 @@ export default function HomeScreen() {
               <Pressable onPress={() => setShowPermissionModal(false)}>
                 {({ pressed }) => (
                   <View
-                    className="border border-border rounded-xl py-3 items-center"
+                    className="border border-border rounded-2xl py-4 items-center"
                     style={{ opacity: pressed ? 0.7 : 1 }}
                   >
                     <Text className="text-foreground font-bold">Depois</Text>
@@ -221,48 +336,53 @@ export default function HomeScreen() {
       </Modal>
 
       <ScrollView showsVerticalScrollIndicator={false}>
-        <View className="gap-6">
-          <View>
-            <Text className="text-3xl font-bold text-foreground">Muaco VPN</Text>
-            <Text className="text-xs text-muted">Apenas Angola 🇦🇴</Text>
+        <View className="gap-6 pb-6">
+          {/* Header */}
+          <View className="gap-1">
+            <Text className="text-4xl font-bold text-foreground">Muaco VPN</Text>
+            <Text className="text-sm text-primary font-semibold">Apenas Angola 🇦🇴</Text>
           </View>
 
           {/* Aviso de Permissão */}
           {!vpnPermissionGranted && (
             <View className="bg-warning/10 rounded-2xl p-4 border border-warning gap-2">
-              <Text className="text-sm font-bold text-warning">⚠️ Permissão VPN Necessária</Text>
-              <Text className="text-xs text-muted">
-                Conceda permissão para usar a VPN. Clique em "Conectar" para solicitar.
-              </Text>
+              <Text className="text-sm font-bold text-warning">⚠️ Permissão Necessária</Text>
+              <Text className="text-xs text-muted">Clique em Conectar para solicitar.</Text>
             </View>
           )}
 
-          {/* Status */}
-          <View className="bg-primary/10 rounded-2xl p-6 border border-primary/20">
-            <Text className="text-sm text-muted mb-2">Status</Text>
-            <Text className="text-2xl font-bold text-foreground">
+          {/* Status Card - Novo Design */}
+          <View className="bg-gradient-to-br from-primary/20 to-primary/5 rounded-3xl p-6 border border-primary/30">
+            <Text className="text-xs text-muted mb-2 font-semibold">STATUS DA CONEXÃO</Text>
+            <Text className="text-3xl font-bold text-foreground mb-4">
               {isConnecting ? "⏳ Conectando..." : isConnected ? "🔒 VPN Ligada" : "🔓 Desconectado"}
             </Text>
             {isConnected && selectedServer && (
-              <View className="gap-1 mt-3">
-                <Text className="text-xs text-muted">Servidor: {selectedServer.name}</Text>
-                <Text className="text-xs text-muted">
-                  Protocolo: {selectedServer.protocol}:{selectedServer.port}
-                </Text>
-                <Text className="text-xs text-success mt-2">✓ VPN Ativa no Dispositivo</Text>
+              <View className="gap-2 pt-4 border-t border-primary/20">
+                <View className="flex-row justify-between">
+                  <Text className="text-xs text-muted">Servidor:</Text>
+                  <Text className="text-xs font-bold text-foreground">{selectedServer.name}</Text>
+                </View>
+                <View className="flex-row justify-between">
+                  <Text className="text-xs text-muted">Protocolo:</Text>
+                  <Text className="text-xs font-bold text-foreground">
+                    {selectedServer.protocol}:{selectedServer.port}
+                  </Text>
+                </View>
+                <Text className="text-xs text-success mt-2 font-bold">✓ VPN Ativa no Dispositivo</Text>
               </View>
             )}
           </View>
 
-          {/* Botão Conectar/Desconectar */}
+          {/* Botão Conectar/Desconectar - Grande */}
           {!isConnected ? (
             <Pressable onPress={handleConnect} disabled={isConnecting}>
               {({ pressed }) => (
                 <View
-                  className="bg-primary rounded-2xl py-4 items-center"
+                  className="bg-primary rounded-3xl py-5 items-center active:scale-95"
                   style={{ opacity: pressed ? 0.8 : 1 }}
                 >
-                  <Text className="text-white font-bold text-lg">
+                  <Text className="text-white font-bold text-xl">
                     {isConnecting ? "Conectando..." : "Conectar"}
                   </Text>
                 </View>
@@ -272,20 +392,20 @@ export default function HomeScreen() {
             <Pressable onPress={handleDisconnect}>
               {({ pressed }) => (
                 <View
-                  className="bg-error rounded-2xl py-4 items-center"
+                  className="bg-error rounded-3xl py-5 items-center active:scale-95"
                   style={{ opacity: pressed ? 0.8 : 1 }}
                 >
-                  <Text className="text-white font-bold text-lg">Desconectar</Text>
+                  <Text className="text-white font-bold text-xl">Desconectar</Text>
                 </View>
               )}
             </Pressable>
           )}
 
           {/* Kill Switch */}
-          <View className="bg-surface rounded-2xl p-4 border border-border gap-3">
+          <View className="bg-surface rounded-2xl p-4 border border-border">
             <View className="flex-row items-center justify-between">
               <View className="flex-1">
-                <Text className="text-sm font-bold text-foreground">Kill Switch</Text>
+                <Text className="text-sm font-bold text-foreground">🛡️ Kill Switch</Text>
                 <Text className="text-xs text-muted">Bloqueia tráfego se VPN cair</Text>
               </View>
               <Switch
@@ -298,10 +418,10 @@ export default function HomeScreen() {
           </View>
 
           {/* Split Tunneling */}
-          <View className="bg-surface rounded-2xl p-4 border border-border gap-3">
-            <View className="flex-row items-center justify-between">
+          <View className="bg-surface rounded-2xl p-4 border border-border">
+            <View className="flex-row items-center justify-between mb-3">
               <View className="flex-1">
-                <Text className="text-sm font-bold text-foreground">Split Tunneling</Text>
+                <Text className="text-sm font-bold text-foreground">🔀 Split Tunneling</Text>
                 <Text className="text-xs text-muted">{bypassedApps.length} apps excluídos</Text>
               </View>
               <Switch
@@ -311,11 +431,55 @@ export default function HomeScreen() {
                 thumbColor={splitTunnelingEnabled ? colors.primary : colors.muted}
               />
             </View>
+
+            {splitTunnelingEnabled && (
+              <Pressable onPress={() => setShowApps(!showApps)}>
+                <Text className="text-sm font-bold text-primary">
+                  {showApps ? "Ocultar" : "Gerenciar"} {allApps.length} Apps
+                </Text>
+              </Pressable>
+            )}
+
+            {showApps && splitTunnelingEnabled && (
+              <View className="bg-surface rounded-xl p-3 border border-border max-h-64 mt-3">
+                {loadingApps ? (
+                  <ActivityIndicator size="large" color={colors.primary} />
+                ) : (
+                  <FlatList
+                    data={allApps}
+                    scrollEnabled={true}
+                    keyExtractor={(item) => item.packageName}
+                    renderItem={({ item }) => {
+                      const isBypassed = bypassedApps.some((a) => a.packageName === item.packageName);
+                      return (
+                        <Pressable onPress={() => toggleAppBypass(item)}>
+                          {({ pressed }) => (
+                            <View
+                              className={`flex-row items-center justify-between p-2 rounded mb-1 ${
+                                isBypassed
+                                  ? "bg-primary/10 border border-primary"
+                                  : "bg-surface border border-border"
+                              }`}
+                              style={{ opacity: pressed ? 0.7 : 1 }}
+                            >
+                              <Text className="text-xs font-bold text-foreground flex-1">
+                                {item.name}
+                              </Text>
+                              {isBypassed && <Text className="text-xs text-primary">✓</Text>}
+                            </View>
+                          )}
+                        </Pressable>
+                      );
+                    }}
+                  />
+                )}
+              </View>
+            )}
           </View>
 
           {/* Servidores */}
           <View className="gap-3">
-            <Text className="text-sm font-bold text-foreground">Servidores OpenVPN Angola</Text>
+            <Text className="text-sm font-bold text-foreground">🌍 Servidores OpenVPN Angola</Text>
             {SERVERS.map((server) => (
               <Pressable
                 key={server.id}
@@ -327,7 +491,7 @@ export default function HomeScreen() {
               >
                 {({ pressed }) => (
                   <View
-                    className={`flex-row items-center justify-between p-3 rounded-xl border ${
+                    className={`flex-row items-center justify-between p-4 rounded-2xl border ${
                       selectedServer?.id === server.id
                         ? "bg-primary/10 border-primary"
                         : "bg-surface border-border"
@@ -340,65 +504,25 @@ export default function HomeScreen() {
                         {server.protocol}:{server.port}
                       </Text>
                     </View>
-                    {selectedServer?.id === server.id && <Text className="text-primary">✓</Text>}
+                    {selectedServer?.id === server.id && (
+                      <Text className="text-primary font-bold">✓</Text>
+                    )}
                   </View>
                 )}
               </Pressable>
             ))}
           </View>
 
-          {/* Apps Split Tunneling */}
-          {splitTunnelingEnabled && (
-            <View className="gap-3">
-              <Pressable onPress={() => setShowApps(!showApps)}>
-                <Text className="text-sm font-bold text-primary">
-                  {showApps ? "Ocultar" : "Ver"} 100 Apps ({bypassedApps.length} excluídos)
-                </Text>
-              </Pressable>
-
-              {showApps && (
-                <View className="bg-surface rounded-xl p-3 border border-border max-h-64">
-                  <FlatList
-                    data={DEFAULT_APPS}
-                    scrollEnabled={true}
-                    keyExtractor={(item, idx) => idx.toString()}
-                    renderItem={({ item }) => (
-                      <Pressable onPress={() => toggleAppBypass(item)}>
-                        {({ pressed }) => (
-                          <View
-                            className={`flex-row items-center justify-between p-2 rounded mb-1 ${
-                              bypassedApps.includes(item)
-                                ? "bg-primary/10 border border-primary"
-                                : "bg-surface border border-border"
-                            }`}
-                            style={{ opacity: pressed ? 0.7 : 1 }}
-                          >
-                            <Text className="text-xs font-bold text-foreground flex-1">
-                              {item}
-                            </Text>
-                            {bypassedApps.includes(item) && (
-                              <Text className="text-xs text-primary">✓</Text>
-                            )}
-                          </View>
-                        )}
-                      </Pressable>
-                    )}
-                  />
-                </View>
-              )}
-            </View>
-          )}
-
           {/* Estatísticas */}
           <View className="gap-3">
             <Pressable onPress={() => setShowStats(!showStats)}>
               <Text className="text-sm font-bold text-primary">
-                {showStats ? "Ocultar" : "Ver"} Estatísticas
+                {showStats ? "Ocultar" : "Ver"} 📊 Estatísticas
               </Text>
             </Pressable>
 
             {showStats && (
-              <View className="bg-surface rounded-xl p-4 border border-border gap-2">
+              <View className="bg-surface rounded-2xl p-4 border border-border gap-3">
                 <View className="flex-row justify-between">
                   <Text className="text-xs text-muted">Conexões:</Text>
                   <Text className="text-xs font-bold text-foreground">
@@ -417,12 +541,6 @@ export default function HomeScreen() {
                     {stats.totalDataUsed} MB
                   </Text>
                 </View>
-                <View className="flex-row justify-between">
-                  <Text className="text-xs text-muted">Última Conexão:</Text>
-                  <Text className="text-xs font-bold text-foreground">
-                    {stats.lastConnected ? new Date(stats.lastConnected).toLocaleDateString() : "-"}
-                  </Text>
-                </View>
               </View>
             )}
           </View>
@@ -431,12 +549,12 @@ export default function HomeScreen() {
           <View className="gap-3">
             <Pressable onPress={() => setShowLogs(!showLogs)}>
               <Text className="text-sm font-bold text-primary">
-                {showLogs ? "Ocultar" : "Ver"} Logs ({logs.length})
+                {showLogs ? "Ocultar" : "Ver"} 📋 Logs ({logs.length})
               </Text>
             </Pressable>
 
             {showLogs && (
-              <View className="bg-surface rounded-xl p-3 gap-2 max-h-48 border border-border">
+              <View className="bg-surface rounded-2xl p-3 gap-2 max-h-48 border border-border">
                 {logs.length === 0 ? (
                   <Text className="text-xs text-muted">Sem logs</Text>
                 ) : (
@@ -447,9 +565,6 @@ export default function HomeScreen() {
                       </Text>
                       <Text className="text-xs text-muted">
                         Duração: {Math.floor(log.duration / 60)}m {log.duration % 60}s
-                      </Text>
-                      <Text className="text-xs text-muted">
-                        {new Date(log.timestamp).toLocaleTimeString()}
                       </Text>
                     </View>
                   ))
