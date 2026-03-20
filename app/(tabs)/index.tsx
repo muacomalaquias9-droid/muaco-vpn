@@ -1,10 +1,11 @@
-import { ScrollView, Text, View, Pressable, Image } from "react-native";
+import { ScrollView, Text, View, Pressable, Image, Switch } from "react-native";
 import { useState, useEffect } from "react";
 import * as Haptics from "expo-haptics";
 import { ScreenContainer } from "@/components/screen-container";
 import { VPNPermissionModal } from "@/components/vpn-permission-modal";
 import { useColors } from "@/hooks/use-colors";
 import { useOpenVPNReal, OPENVPN_CONFIGS, type OpenVPNConfig } from "@/hooks/use-openvpn-real";
+import { useKillSwitch } from "@/hooks/use-kill-switch";
 import { VPNLogger, type VPNLog } from "@/lib/vpn-logger";
 
 const OPERATOR_LOGOS: Record<string, any> = {
@@ -16,6 +17,8 @@ export default function HomeScreen() {
   const colors = useColors();
   const { isConnected, isConnecting, selectedConfig, error, connect, disconnect } =
     useOpenVPNReal();
+  const { killSwitchEnabled, toggleKillSwitch, isKillSwitchActive } =
+    useKillSwitch(isConnected);
   const [logs, setLogs] = useState<VPNLog[]>([]);
   const [showLogs, setShowLogs] = useState(false);
   const [showPermission, setShowPermission] = useState(false);
@@ -65,6 +68,11 @@ export default function HomeScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
+  const handleKillSwitchToggle = async (value: boolean) => {
+    await toggleKillSwitch(value);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
   return (
     <ScreenContainer className="p-4">
       <ScrollView showsVerticalScrollIndicator={false}>
@@ -93,6 +101,11 @@ export default function HomeScreen() {
               </View>
             )}
             {error && <Text className="text-xs text-error mt-2">Erro: {error}</Text>}
+            {isKillSwitchActive && (
+              <View className="bg-error/20 rounded-lg p-2 mt-3 border border-error">
+                <Text className="text-xs text-error font-bold">🛑 Kill Switch Ativo - Tráfego Bloqueado</Text>
+              </View>
+            )}
           </View>
 
           {/* Botão Desconectar */}
@@ -108,6 +121,27 @@ export default function HomeScreen() {
               )}
             </Pressable>
           )}
+
+          {/* Kill Switch */}
+          <View className="bg-surface rounded-2xl p-4 border border-border gap-3">
+            <View className="flex-row items-center justify-between">
+              <View className="flex-1">
+                <Text className="text-sm font-bold text-foreground">Kill Switch</Text>
+                <Text className="text-xs text-muted">Bloqueia tráfego se VPN cair</Text>
+              </View>
+              <Switch
+                value={killSwitchEnabled}
+                onValueChange={handleKillSwitchToggle}
+                trackColor={{ false: colors.border, true: colors.primary }}
+                thumbColor={killSwitchEnabled ? colors.primary : colors.muted}
+              />
+            </View>
+            {killSwitchEnabled && (
+              <Text className="text-xs text-warning bg-warning/10 p-2 rounded">
+                ⚠️ Kill Switch ativo: Se a VPN desconectar, todo tráfego será bloqueado
+              </Text>
+            )}
+          </View>
 
           {/* Servidores */}
           <View className="gap-3">
