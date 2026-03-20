@@ -6,6 +6,7 @@ import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { useVPNPermission } from "@/hooks/use-vpn-permission";
 import { usePushNotifications } from "@/hooks/use-push-notifications";
+import { useLocationPermission } from "@/hooks/use-location-permission";
 
 interface VPNServer {
   id: string;
@@ -45,6 +46,7 @@ export default function HomeScreen() {
   const colors = useColors();
   const { vpnPermissionGranted, requestVPNPermission, isRequesting } = useVPNPermission();
   const { sendNotification } = usePushNotifications();
+  const { locationPermissionGranted, requestLocationPermission, userLocation } = useLocationPermission();
   const [showPermissionModal, setShowPermissionModal] = useState(!vpnPermissionGranted);
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -65,6 +67,7 @@ export default function HomeScreen() {
   const [showStats, setShowStats] = useState(false);
   const [showApps, setShowApps] = useState(false);
   const [connectionStartTime, setConnectionStartTime] = useState<number | null>(null);
+  const [showLocationModal, setShowLocationModal] = useState(!locationPermissionGranted);
 
   useEffect(() => {
     loadData();
@@ -288,6 +291,50 @@ export default function HomeScreen() {
 
   return (
     <ScreenContainer className="p-4">
+      {/* Modal de Permissão de Localização */}
+      <Modal visible={showLocationModal} transparent animationType="fade">
+        <View className="flex-1 bg-black/50 justify-center items-center p-4">
+          <View className="bg-surface rounded-3xl p-6 gap-4 w-full max-w-sm border border-border">
+            <View className="items-center mb-2">
+              <Text className="text-4xl mb-2">📍</Text>
+              <Text className="text-2xl font-bold text-foreground text-center">Localização</Text>
+            </View>
+            <Text className="text-sm text-muted leading-relaxed text-center">
+              Muaco VPN usa sua localização para melhorar a conexão e sugerir servidores mais próximos.
+            </Text>
+
+            <View className="gap-3">
+              <Pressable
+                onPress={async () => {
+                  await requestLocationPermission();
+                  setShowLocationModal(false);
+                }}
+              >
+                {({ pressed }) => (
+                  <View
+                    className="bg-primary rounded-2xl py-4 items-center"
+                    style={{ opacity: pressed ? 0.8 : 1 }}
+                  >
+                    <Text className="text-white font-bold text-lg">Permitir</Text>
+                  </View>
+                )}
+              </Pressable>
+
+              <Pressable onPress={() => setShowLocationModal(false)}>
+                {({ pressed }) => (
+                  <View
+                    className="border border-border rounded-2xl py-4 items-center"
+                    style={{ opacity: pressed ? 0.7 : 1 }}
+                  >
+                    <Text className="text-foreground font-bold">Depois</Text>
+                  </View>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* Modal de Permissão VPN */}
       <Modal visible={showPermissionModal} transparent animationType="fade">
         <View className="flex-1 bg-black/50 justify-center items-center p-4">
@@ -341,13 +388,24 @@ export default function HomeScreen() {
           <View className="gap-1">
             <Text className="text-4xl font-bold text-foreground">Muaco VPN</Text>
             <Text className="text-sm text-primary font-semibold">Apenas Angola 🇦🇴</Text>
+            {userLocation && (
+              <Text className="text-xs text-muted">
+                📍 {userLocation.latitude.toFixed(4)}, {userLocation.longitude.toFixed(4)}
+              </Text>
+            )}
           </View>
 
-          {/* Aviso de Permissão */}
+          {/* Avisos de Permissão */}
           {!vpnPermissionGranted && (
             <View className="bg-warning/10 rounded-2xl p-4 border border-warning gap-2">
-              <Text className="text-sm font-bold text-warning">⚠️ Permissão Necessária</Text>
+              <Text className="text-sm font-bold text-warning">⚠️ Permissão VPN Necessária</Text>
               <Text className="text-xs text-muted">Clique em Conectar para solicitar.</Text>
+            </View>
+          )}
+          {!locationPermissionGranted && (
+            <View className="bg-primary/10 rounded-2xl p-4 border border-primary/30 gap-2">
+              <Text className="text-sm font-bold text-primary">📍 Localização Desativada</Text>
+              <Text className="text-xs text-muted">Ative para melhorar a VPN.</Text>
             </View>
           )}
 
