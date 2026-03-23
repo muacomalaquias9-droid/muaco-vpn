@@ -1,212 +1,163 @@
-import { useState, useEffect, useRef } from "react";
-import { View, Text, TouchableOpacity, ScrollView, Modal, Alert, Linking } from "react-native";
+import { ScrollView, Text, View, Pressable, Image } from "react-native";
+import { useState, useEffect } from "react";
+import * as Haptics from "expo-haptics";
 import { ScreenContainer } from "@/components/screen-container";
+import { useColors } from "@/hooks/use-colors";
+import { useVPNManager, type Server } from "@/hooks/use-vpn-manager";
+import { VPNLogger, type VPNLog } from "@/lib/vpn-logger";
 
-type VPNServer = {
-  id: string;
-  name: string;
-  country: string;
-  protocol: string;
-  port: number;
-};
-
-const SERVERS: VPNServer[] = [
-  { id: "unitel", name: "Unitel NET", country: "Angola", protocol: "OpenVPN UDP", port: 1194 },
-  { id: "africell1", name: "Africell 01", country: "Angola", protocol: "OpenVPN UDP", port: 1194 },
-  { id: "africell2", name: "Africell 02", country: "Angola", protocol: "OpenVPN TCP", port: 443 },
+const SERVERS: Server[] = [
+  { id: 1, name: "Unitel NET", operator: "Unitel", protocol: "OpenVPN", port: 1194 },
+  { id: 2, name: "Africell 01", operator: "Africell", protocol: "OpenVPN", port: 1194 },
+  { id: 3, name: "Africell 02", operator: "Africell", protocol: "OpenVPN", port: 443 },
 ];
 
+const OPERATOR_LOGOS: Record<string, any> = {
+  Unitel: require("@/assets/images/unitel-logo.png"),
+  Africell: require("@/assets/images/africell-logo.png"),
+};
+
 export default function HomeScreen() {
-  const [isConnected, setIsConnected] = useState(false);
-  const [selectedServer, setSelectedServer] = useState<VPNServer>(SERVERS[0]);
-  const [showServerModal, setShowServerModal] = useState(false);
-  const [showPermissionModal, setShowPermissionModal] = useState(false);
-  const [connectionTime, setConnectionTime] = useState(0);
-  const [dataUsed, setDataUsed] = useState(0);
-  const connectionTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const dataTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const colors = useColors();
+  const { isConnected, isConnecting, selectedServer, connect, disconnect } = useVPNManager();
+  const [logs, setLogs] = useState<VPNLog[]>([]);
+  const [showLogs, setShowLogs] = useState(false);
 
-  // Simular contagem de tempo de conexão
   useEffect(() => {
-    if (isConnected) {
-      connectionTimerRef.current = setInterval(() => {
-        setConnectionTime((prev) => prev + 1);
-      }, 1000);
+    loadLogs();
+  }, []);
 
-      dataTimerRef.current = setInterval(() => {
-        setDataUsed((prev) => prev + Math.random() * 0.5); // 0-0.5 MB por segundo
-      }, 1000);
-    } else {
-      if (connectionTimerRef.current) clearInterval(connectionTimerRef.current);
-      if (dataTimerRef.current) clearInterval(dataTimerRef.current);
-      setConnectionTime(0);
-      setDataUsed(0);
+  useEffect(() => {
+    if (isConnected || isConnecting) {
+      loadLogs();
     }
+  }, [isConnected, isConnecting]);
 
-    return () => {
-      if (connectionTimerRef.current) clearInterval(connectionTimerRef.current);
-      if (dataTimerRef.current) clearInterval(dataTimerRef.current);
-    };
-  }, [isConnected]);
-
-  const formatTime = (seconds: number) => {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-    return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+  const loadLogs = async () => {
+    const allLogs = await VPNLogger.getLogs();
+    setLogs(allLogs);
   };
 
-  const handleConnect = () => {
-    setShowPermissionModal(true);
+  const handleConnect = async () => {
+    if (!selectedServer) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      return;
+    }
+    await connect(selectedServer);
+    await loadLogs();
   };
 
-  const handlePermissionGranted = () => {
-    setShowPermissionModal(false);
-    setIsConnected(true);
-  };
-
-  const handleDisconnect = () => {
-    setIsConnected(false);
-  };
-
-  const handleUpdateServer = () => {
-    setShowServerModal(true);
-  };
-
-  const selectServer = (server: VPNServer) => {
-    setSelectedServer(server);
-    setShowServerModal(false);
+  const handleDisconnect = async () => {
+    await disconnect();
+    await loadLogs();
   };
 
   return (
-    <ScreenContainer className="bg-black flex-1">
-      <ScrollView contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false}>
-        <View className="flex-1 px-4 py-6">
-          {/* Header */}
-          <View className="mb-8">
-            <Text className="text-white text-3xl font-bold">Muaco VPN</Text>
-            <Text className="text-gray-400 text-sm mt-1">Apenas Angola 🇦🇴</Text>
-          </View>
+    <ScreenContainer className="p-4">
+      <ScrollView showsVerticalScrollIndicator={false}>
+        <View className="gap-6">
+          <Text className="text-3xl font-bold text-foreground">Muaco VPN</Text>
+          <Text className="text-xs text-muted">Apenas Angola 🇦🇴</Text>
 
-          {/* Status Card */}
-          <View className="bg-gray-900 rounded-2xl p-4 mb-6 border border-gray-800">
-            <Text className="text-gray-400 text-xs uppercase tracking-widest mb-2">Status</Text>
-            <View className="flex-row items-center justify-between">
-              <Text className={`text-xl font-bold ${isConnected ? "text-green-500" : "text-red-500"}`}>
-                {isConnected ? "🔒 Conectado" : "❌ Desconectado"}
-              </Text>
-              {isConnected && (
-                <View className="bg-green-500 rounded-full w-3 h-3 animate-pulse" />
-              )}
-            </View>
-          </View>
-
-          {/* Main VPN Button */}
-          <View className="items-center mb-8">
-            <TouchableOpacity
-              onPress={isConnected ? handleDisconnect : handleConnect}
-              className={`w-40 h-40 rounded-full items-center justify-center ${
-                isConnected ? "bg-red-600" : "bg-blue-600"
-              } shadow-lg`}
-            >
-              <Text className="text-5xl mb-2">{isConnected ? "🔓" : "🔒"}</Text>
-              <Text className="text-white font-bold text-lg">{isConnected ? "Desconectar" : "Conectar"}</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Server Info */}
-          <View className="bg-gray-900 rounded-2xl p-4 mb-6 border border-gray-800">
-            <Text className="text-gray-400 text-xs uppercase tracking-widest mb-3">Servidor Selecionado</Text>
-            <Text className="text-white text-lg font-bold mb-1">{selectedServer.name}</Text>
-            <Text className="text-gray-400 text-sm mb-3">{selectedServer.protocol} {selectedServer.port}</Text>
-            <TouchableOpacity
-              onPress={handleUpdateServer}
-              className="bg-blue-600 rounded-lg py-2 px-4"
-            >
-              <Text className="text-white font-semibold text-center">Atualizar Servidor</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Stats */}
-          {isConnected && (
-            <View className="flex-row gap-3 mb-6">
-              <View className="flex-1 bg-gray-900 rounded-2xl p-4 border border-gray-800">
-                <Text className="text-gray-400 text-xs uppercase tracking-widest mb-2">Tempo</Text>
-                <Text className="text-green-500 text-lg font-bold">{formatTime(connectionTime)}</Text>
-              </View>
-              <View className="flex-1 bg-gray-900 rounded-2xl p-4 border border-gray-800">
-                <Text className="text-gray-400 text-xs uppercase tracking-widest mb-2">Dados</Text>
-                <Text className="text-green-500 text-lg font-bold">{dataUsed.toFixed(1)} MB</Text>
-              </View>
-            </View>
-          )}
-
-          {/* Dashboard Info */}
-          <View className="bg-gray-900 rounded-2xl p-4 border border-gray-800">
-            <Text className="text-gray-400 text-xs uppercase tracking-widest mb-2">Dashboard</Text>
-            <Text className="text-white text-sm leading-relaxed">
-              {isConnected
-                ? `Conectado ao servidor ${selectedServer.name}. Clique em "Atualizar Servidor" para mudar de servidor.`
-                : "Clique em Conectar para iniciar a VPN. Será solicitada permissão de VPN."}
+          {/* Status */}
+          <View className="bg-primary/10 rounded-2xl p-6 border border-primary/20">
+            <Text className="text-sm text-muted mb-2">Status</Text>
+            <Text className="text-2xl font-bold text-foreground mb-4">
+              {isConnecting ? "⏳ Conectando..." : isConnected ? "🔒 Conectado" : "🔓 Desconectado"}
             </Text>
+            {isConnected && selectedServer && (
+              <View className="gap-1">
+                <Text className="text-xs text-muted">Servidor: {selectedServer.name}</Text>
+                <Text className="text-xs text-muted">Operador: {selectedServer.operator}</Text>
+                <Text className="text-xs text-muted">Protocolo: {selectedServer.protocol}</Text>
+              </View>
+            )}
+          </View>
+
+          {/* Botão */}
+          <Pressable
+            onPress={isConnected ? handleDisconnect : handleConnect}
+            disabled={isConnecting || !selectedServer}
+          >
+            {({ pressed }) => (
+              <View
+                className="bg-primary rounded-2xl py-4 items-center"
+                style={{ opacity: pressed ? 0.8 : 1 }}
+              >
+                <Text className="text-white font-bold text-lg">
+                  {isConnecting ? "Processando..." : isConnected ? "Desconectar" : "Conectar"}
+                </Text>
+              </View>
+            )}
+          </Pressable>
+
+          {/* Servidores */}
+          <View className="gap-3">
+            <Text className="text-sm font-bold text-foreground">Servidores Angola</Text>
+            {SERVERS.map((server) => (
+              <Pressable
+                key={server.id}
+                onPress={() => {
+                  if (!isConnected) {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }
+                }}
+                disabled={isConnected}
+              >
+                {({ pressed }) => (
+                  <View
+                    className={`flex-row items-center gap-3 p-3 rounded-xl border ${
+                      selectedServer?.id === server.id
+                        ? "bg-primary/10 border-primary"
+                        : "bg-surface border-border"
+                    }`}
+                    style={{ opacity: pressed ? 0.7 : 1 }}
+                  >
+                    <Image
+                      source={OPERATOR_LOGOS[server.operator]}
+                      style={{ width: 40, height: 40, borderRadius: 8 }}
+                    />
+                    <View className="flex-1">
+                      <Text className="text-sm font-bold text-foreground">{server.name}</Text>
+                      <Text className="text-xs text-muted">{server.operator}</Text>
+                    </View>
+                    {selectedServer?.id === server.id && <Text className="text-primary">✓</Text>}
+                  </View>
+                )}
+              </Pressable>
+            ))}
+          </View>
+
+          {/* Logs */}
+          <View className="gap-3">
+            <Pressable onPress={() => setShowLogs(!showLogs)}>
+              <Text className="text-sm font-bold text-primary">
+                {showLogs ? "Ocultar Logs" : "Ver Logs"} ({logs.length})
+              </Text>
+            </Pressable>
+
+            {showLogs && (
+              <View className="bg-surface rounded-xl p-3 gap-2 max-h-48">
+                {logs.length === 0 ? (
+                  <Text className="text-xs text-muted">Sem logs</Text>
+                ) : (
+                  logs.slice(0, 10).map((log) => (
+                    <View key={log.id} className="border-b border-border pb-2">
+                      <Text className="text-xs font-bold text-foreground">
+                        {log.action === "connect" ? "🔗" : "🔌"} {log.server}
+                      </Text>
+                      <Text className="text-xs text-muted">{log.message}</Text>
+                      <Text className="text-xs text-muted">
+                        {VPNLogger.formatTime(log.timestamp)}
+                      </Text>
+                    </View>
+                  ))
+                )}
+              </View>
+            )}
           </View>
         </View>
       </ScrollView>
-
-      {/* Server Selection Modal */}
-      <Modal visible={showServerModal} transparent animationType="slide">
-        <View className="flex-1 bg-black/80 justify-end">
-          <View className="bg-gray-900 rounded-t-3xl p-6">
-            <Text className="text-white text-xl font-bold mb-4">Selecionar Servidor</Text>
-            {SERVERS.map((server) => (
-              <TouchableOpacity
-                key={server.id}
-                onPress={() => selectServer(server)}
-                className={`p-4 rounded-lg mb-2 border ${
-                  selectedServer.id === server.id
-                    ? "bg-blue-600 border-blue-500"
-                    : "bg-gray-800 border-gray-700"
-                }`}
-              >
-                <Text className="text-white font-semibold">{server.name}</Text>
-                <Text className="text-gray-400 text-sm">{server.protocol} {server.port}</Text>
-              </TouchableOpacity>
-            ))}
-            <TouchableOpacity
-              onPress={() => setShowServerModal(false)}
-              className="bg-gray-800 rounded-lg p-4 mt-4"
-            >
-              <Text className="text-white font-semibold text-center">Fechar</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      {/* VPN Permission Modal */}
-      <Modal visible={showPermissionModal} transparent animationType="fade">
-        <View className="flex-1 bg-black/80 justify-center items-center px-4">
-          <View className="bg-gray-900 rounded-2xl p-6 border border-gray-800 w-full max-w-sm">
-            <Text className="text-white text-lg font-bold mb-4">Permissão de VPN</Text>
-            <Text className="text-gray-300 text-sm mb-6 leading-relaxed">
-              Este dispositivo será ligado à Internet através da app Muaco VPN. A sua atividade de rede, incluindo dados de navegação e emails, está visível para o seu administrador de TI.
-            </Text>
-            <View className="flex-row gap-3">
-              <TouchableOpacity
-                onPress={() => setShowPermissionModal(false)}
-                className="flex-1 bg-gray-800 rounded-lg py-3"
-              >
-                <Text className="text-white font-semibold text-center">Cancelar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handlePermissionGranted}
-                className="flex-1 bg-blue-600 rounded-lg py-3"
-              >
-                <Text className="text-white font-semibold text-center">OK</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </ScreenContainer>
   );
 }
