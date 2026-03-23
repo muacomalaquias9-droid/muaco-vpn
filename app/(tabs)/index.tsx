@@ -1,637 +1,712 @@
-import { ScrollView, Text, View, Pressable, Switch, FlatList, Modal, ActivityIndicator } from "react-native";
-import { useState, useEffect } from "react";
-import * as Haptics from "expo-haptics";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { ScreenContainer } from "@/components/screen-container";
-import { useColors } from "@/hooks/use-colors";
-import { useVPNPermission } from "@/hooks/use-vpn-permission";
-import { usePushNotifications } from "@/hooks/use-push-notifications";
-import { useLocationPermission } from "@/hooks/use-location-permission";
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  Modal,
+  StyleSheet,
+  Animated,
+  Easing,
+  Switch,
+  FlatList,
+  Image,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Notifications from 'expo-notifications';
+import * as Location from 'expo-location';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { COLORS, SPACING, TYPOGRAPHY, BORDER_RADIUS, SHADOWS } from '@/lib/theme-premium';
 
-interface VPNServer {
-  id: string;
-  name: string;
-  operator: string;
-  protocol: "UDP" | "TCP";
-  port: number;
-}
-
-interface VPNLog {
-  id: string;
-  timestamp: number;
-  action: "connect" | "disconnect";
-  server: string;
-  duration: number;
-}
-
-interface VPNStats {
-  totalConnections: number;
-  totalDataUsed: number;
-  totalTimeConnected: number;
-  lastConnected: number;
-}
-
-interface InstalledApp {
-  name: string;
-  packageName: string;
-}
-
-const SERVERS: VPNServer[] = [
-  { id: "unitel", name: "Unitel NET", operator: "Unitel", protocol: "UDP", port: 1194 },
-  { id: "africell1", name: "Africell 01", operator: "Africell", protocol: "UDP", port: 1194 },
-  { id: "africell2", name: "Africell 02", operator: "Africell", protocol: "TCP", port: 443 },
+// VPN Servers Angola
+const VPN_SERVERS = [
+  {
+    id: 'unitel-net',
+    name: 'Unitel NET',
+    country: 'Angola',
+    flag: '🇦🇴',
+    protocol: 'OpenVPN UDP 1194',
+    ping: '12ms',
+    speed: '95 Mbps',
+    logo: '🏢',
+  },
+  {
+    id: 'africell-01',
+    name: 'Africell 01',
+    country: 'Angola',
+    flag: '🇦🇴',
+    protocol: 'OpenVPN UDP 1194',
+    ping: '18ms',
+    speed: '87 Mbps',
+    logo: '🏢',
+  },
+  {
+    id: 'africell-02',
+    name: 'Africell 02',
+    country: 'Angola',
+    flag: '🇦🇴',
+    protocol: 'OpenVPN TCP 443',
+    ping: '22ms',
+    speed: '78 Mbps',
+    logo: '🏢',
+  },
 ];
 
 export default function HomeScreen() {
-  const colors = useColors();
-  const { vpnPermissionGranted, requestVPNPermission, isRequesting } = useVPNPermission();
-  const { sendNotification } = usePushNotifications();
-  const { locationPermissionGranted, requestLocationPermission, userLocation } = useLocationPermission();
-  const [showPermissionModal, setShowPermissionModal] = useState(!vpnPermissionGranted);
   const [isConnected, setIsConnected] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [selectedServer, setSelectedServer] = useState<VPNServer | null>(SERVERS[0]);
-  const [killSwitchEnabled, setKillSwitchEnabled] = useState(false);
-  const [splitTunnelingEnabled, setSplitTunnelingEnabled] = useState(false);
-  const [bypassedApps, setBypassedApps] = useState<InstalledApp[]>([]);
-  const [allApps, setAllApps] = useState<InstalledApp[]>([]);
-  const [loadingApps, setLoadingApps] = useState(false);
-  const [logs, setLogs] = useState<VPNLog[]>([]);
-  const [stats, setStats] = useState<VPNStats>({
-    totalConnections: 0,
-    totalDataUsed: 0,
-    totalTimeConnected: 0,
-    lastConnected: 0,
+  const [selectedServer, setSelectedServer] = useState(VPN_SERVERS[0]);
+  const [vpnKey, setVpnKey] = useState('');
+  const [killSwitch, setKillSwitch] = useState(false);
+  const [showServerModal, setShowServerModal] = useState(false);
+  const [showVPNPermission, setShowVPNPermission] = useState(false);
+  const [location, setLocation] = useState<any>(null);
+  const [stats, setStats] = useState({
+    connectionTime: '0s',
+    dataUsed: '0 MB',
+    speed: '0 Mbps',
   });
-  const [showLogs, setShowLogs] = useState(false);
-  const [showStats, setShowStats] = useState(false);
-  const [showApps, setShowApps] = useState(false);
-  const [connectionStartTime, setConnectionStartTime] = useState<number | null>(null);
-  const [showLocationModal, setShowLocationModal] = useState(!locationPermissionGranted);
 
+  const pulseAnim = React.useRef(new Animated.Value(0)).current;
+
+  // Pulse animation para botão conectado
   useEffect(() => {
-    loadData();
-    loadInstalledApps();
+    if (isConnected) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 2000,
+            easing: Easing.bezier(0.25, 0.46, 0.45, 0.94),
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 0,
+            duration: 0,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    }
+  }, [isConnected, pulseAnim]);
+
+  const scale = pulseAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 1.15],
+  });
+
+  const opacity = pulseAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.5, 0],
+  });
+
+  // Obter localização
+  useEffect(() => {
+    (async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === 'granted') {
+        const loc = await Location.getCurrentPositionAsync({});
+        setLocation(loc.coords);
+      }
+    })();
   }, []);
 
-  const loadData = async () => {
-    try {
-      const savedServer = await AsyncStorage.getItem("vpn_server");
-      const savedKillSwitch = await AsyncStorage.getItem("vpn_kill_switch");
-      const savedSplitTunneling = await AsyncStorage.getItem("vpn_split_tunneling");
-      const savedBypassedApps = await AsyncStorage.getItem("vpn_bypassed_apps");
-      const savedLogs = await AsyncStorage.getItem("vpn_logs");
-      const savedStats = await AsyncStorage.getItem("vpn_stats");
-
-      if (savedServer) setSelectedServer(JSON.parse(savedServer));
-      if (savedKillSwitch) setKillSwitchEnabled(JSON.parse(savedKillSwitch));
-      if (savedSplitTunneling) setSplitTunnelingEnabled(JSON.parse(savedSplitTunneling));
-      if (savedBypassedApps) setBypassedApps(JSON.parse(savedBypassedApps));
-      if (savedLogs) setLogs(JSON.parse(savedLogs));
-      if (savedStats) setStats(JSON.parse(savedStats));
-    } catch (error) {
-      console.error("Erro ao carregar dados:", error);
-    }
+  // Gerar chave VPN
+  const generateVPNKey = () => {
+    const key = Math.random().toString(36).substring(2, 15) + 
+                Math.random().toString(36).substring(2, 15);
+    setVpnKey(key.toUpperCase());
+    return key;
   };
 
-  const loadInstalledApps = async () => {
-    setLoadingApps(true);
-    try {
-      const mockApps: InstalledApp[] = [
-        { name: "WhatsApp", packageName: "com.whatsapp" },
-        { name: "Facebook", packageName: "com.facebook.katana" },
-        { name: "Instagram", packageName: "com.instagram.android" },
-        { name: "Twitter", packageName: "com.twitter.android" },
-        { name: "Maps", packageName: "com.google.android.apps.maps" },
-        { name: "Spotify", packageName: "com.spotify.music" },
-        { name: "Netflix", packageName: "com.netflix.mediaclient" },
-        { name: "Chrome", packageName: "com.android.chrome" },
-        { name: "Gmail", packageName: "com.google.android.gm" },
-        { name: "YouTube", packageName: "com.google.android.youtube" },
-        { name: "Reddit", packageName: "com.reddit.frontpage" },
-        { name: "Pinterest", packageName: "com.pinterest" },
-        { name: "LinkedIn", packageName: "com.linkedin.android" },
-        { name: "Snapchat", packageName: "com.snapchat.android" },
-        { name: "TikTok", packageName: "com.ss.android.ugc.trill" },
-        { name: "Telegram", packageName: "org.telegram.messenger" },
-        { name: "Viber", packageName: "com.viber.voip" },
-        { name: "Skype", packageName: "com.skype.raider" },
-        { name: "Discord", packageName: "com.discord" },
-        { name: "Slack", packageName: "com.slack" },
-        { name: "Amazon", packageName: "com.amazon.mShop.android.shopping" },
-        { name: "eBay", packageName: "com.ebay.mobile" },
-        { name: "AliExpress", packageName: "com.alibaba.aliexpresshd" },
-        { name: "Uber", packageName: "com.ubercab" },
-        { name: "Lyft", packageName: "com.lyft.android" },
-        { name: "Airbnb", packageName: "com.airbnb.android" },
-        { name: "Booking", packageName: "com.booking" },
-        { name: "Expedia", packageName: "com.expedia.bookings" },
-        { name: "Waze", packageName: "com.waze" },
-        { name: "Duolingo", packageName: "com.duolingo.android" },
-        { name: "Coursera", packageName: "org.coursera.android" },
-        { name: "Udemy", packageName: "com.udemy.android" },
-        { name: "edX", packageName: "org.edx.mobile" },
-        { name: "Fitbit", packageName: "com.fitbit.FitbitMobile" },
-        { name: "MyFitnessPal", packageName: "com.myfitnesspal.android" },
-        { name: "Strava", packageName: "com.strava" },
-        { name: "Nike Run", packageName: "com.nike.plusgps" },
-        { name: "Google Photos", packageName: "com.google.android.apps.photos" },
-        { name: "Lightroom", packageName: "com.adobe.lrmobile" },
-        { name: "Photoshop", packageName: "com.adobe.photoshop.touch" },
-        { name: "Snapseed", packageName: "com.niksoftware.snapseed" },
-        { name: "VSCO", packageName: "com.vsco.cam" },
-        { name: "Canva", packageName: "com.canva.editor" },
-        { name: "Adobe Express", packageName: "com.adobe.creativeapps.express" },
-        { name: "Word", packageName: "com.microsoft.office.word" },
-        { name: "Excel", packageName: "com.microsoft.office.excel" },
-        { name: "PowerPoint", packageName: "com.microsoft.office.powerpoint" },
-        { name: "Google Docs", packageName: "com.google.android.apps.docs" },
-        { name: "Google Sheets", packageName: "com.google.android.apps.docs.editors.sheets" },
-        { name: "OneDrive", packageName: "com.microsoft.skydrive" },
-        { name: "Dropbox", packageName: "com.dropbox.android" },
-        { name: "Google Drive", packageName: "com.google.android.apps.docs.editors.sheets" },
-        { name: "iCloud", packageName: "com.apple.iCloud" },
-        { name: "Mega", packageName: "mega.privacy.android.app" },
-        { name: "Signal", packageName: "org.thoughtcrime.securesms" },
-        { name: "Wire", packageName: "com.wire" },
-        { name: "Threema", packageName: "ch.threema.app" },
-        { name: "Wickr", packageName: "com.wickr.pro" },
-        { name: "Session", packageName: "network.loki.messenger" },
-        { name: "Briar", packageName: "org.briarproject.briar.android" },
-        { name: "Element", packageName: "im.vector.app" },
-        { name: "Jami", packageName: "cx.ring" },
-        { name: "Tox", packageName: "im.gultom.tox" },
-        { name: "Ricochet", packageName: "com.ricochet.im" },
-        { name: "Pond", packageName: "im.ricochet.pond" },
-        { name: "Bitmessage", packageName: "org.bitmessage.android" },
-        { name: "Retroshare", packageName: "retroshare.android.gui" },
-        { name: "I2P", packageName: "net.i2p.android" },
-        { name: "Tor Browser", packageName: "org.torproject.torbrowser" },
-        { name: "Mullvad VPN", packageName: "net.mullvad.mullvadvpn" },
-        { name: "ProtonVPN", packageName: "com.protonvpn.android" },
-        { name: "ExpressVPN", packageName: "com.expressvpn.vpn" },
-        { name: "NordVPN", packageName: "com.nordvpn.android" },
-        { name: "Surfshark", packageName: "com.surfshark.vpnclient.android" },
-        { name: "CyberGhost", packageName: "de.mobilenetworking.cyberghost" },
-        { name: "PIA", packageName: "com.privateinternetaccess.android" },
-        { name: "IPVanish", packageName: "com.ipvanish.android.vpn" },
-        { name: "HotspotShield", packageName: "hotspotshield.android.vpn" },
-        { name: "Windscribe", packageName: "com.windscribe.vpn" },
-        { name: "TunnelBear", packageName: "com.tunnelbear.android" },
-        { name: "ZenMate", packageName: "com.zenmate.android" },
-        { name: "Psiphon", packageName: "com.psiphon3" },
-        { name: "Opera VPN", packageName: "com.opera.max" },
-        { name: "Avast VPN", packageName: "com.avast.android.vpn" },
-        { name: "AVG VPN", packageName: "com.avg.android.vpn" },
-        { name: "McAfee VPN", packageName: "com.mcafee.android.vpn" },
-        { name: "Norton VPN", packageName: "com.symantec.mobilesecurity" },
-        { name: "Kaspersky VPN", packageName: "com.kaspersky.android.vpn" },
-        { name: "F-Secure VPN", packageName: "com.fsecure.android.vpn" },
-        { name: "Bitdefender VPN", packageName: "com.bitdefender.vpn" },
-        { name: "ESET VPN", packageName: "com.eset.android.vpn" },
-        { name: "Trend Micro VPN", packageName: "com.trendmicro.android.vpn" },
-        { name: "Sophos VPN", packageName: "com.sophos.android.vpn" },
-        { name: "Palo Alto VPN", packageName: "com.paloaltonetworks.android.vpn" },
-        { name: "Cisco VPN", packageName: "com.cisco.android.vpn" },
-        { name: "Fortinet VPN", packageName: "com.fortinet.android.vpn" },
-        { name: "Juniper VPN", packageName: "com.juniper.android.vpn" },
-        { name: "Check Point VPN", packageName: "com.checkpoint.android.vpn" },
-        { name: "SonicWall VPN", packageName: "com.sonicwall.android.vpn" },
-        { name: "Watchguard VPN", packageName: "com.watchguard.android.vpn" },
-        { name: "Barracuda VPN", packageName: "com.barracuda.android.vpn" },
-      ];
-
-      setAllApps(mockApps);
-    } catch (error) {
-      console.error("Erro ao carregar apps:", error);
-      setAllApps([]);
-    } finally {
-      setLoadingApps(false);
-    }
-  };
-
-  const addLog = (action: "connect" | "disconnect", server: string, duration: number) => {
-    const newLog: VPNLog = {
-      id: Date.now().toString(),
-      timestamp: Date.now(),
-      action,
-      server,
-      duration,
-    };
-    const updatedLogs = [newLog, ...logs].slice(0, 100);
-    setLogs(updatedLogs);
-    AsyncStorage.setItem("vpn_logs", JSON.stringify(updatedLogs));
-  };
-
-  const updateStats = (duration: number) => {
-    const updated: VPNStats = {
-      totalConnections: stats.totalConnections + 1,
-      totalDataUsed: stats.totalDataUsed + Math.floor(Math.random() * 100),
-      totalTimeConnected: stats.totalTimeConnected + duration,
-      lastConnected: Date.now(),
-    };
-    setStats(updated);
-    AsyncStorage.setItem("vpn_stats", JSON.stringify(updated));
-  };
-
+  // Conectar VPN
   const handleConnect = async () => {
-    if (!selectedServer) return;
-
-    if (!vpnPermissionGranted) {
-      setShowPermissionModal(true);
+    if (!selectedServer) {
+      alert('Selecione um servidor primeiro');
       return;
     }
 
-    setIsConnecting(true);
-    setConnectionStartTime(Date.now());
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setShowVPNPermission(true);
+  };
 
+  const confirmVPNConnection = async () => {
+    setShowVPNPermission(false);
+    
+    // Gerar chave VPN
+    const key = generateVPNKey();
+    
+    // Simular conexão com delay de 5 segundos
     setTimeout(() => {
       setIsConnected(true);
-      setIsConnecting(false);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      sendNotification("🔒 VPN Conectada", `Conectado a ${selectedServer?.name}`);
-      addLog("connect", selectedServer?.name || "Desconhecido", 0);
+      
+      // Enviar notificação push
+      Notifications.scheduleNotificationAsync({
+        content: {
+          title: '🔒 VPN Conectada',
+          body: `Conectado ao servidor ${selectedServer.name}`,
+          data: { status: 'connected' },
+        },
+        trigger: null,
+      });
+
+      // Atualizar estatísticas
+      setStats({
+        connectionTime: '0s',
+        dataUsed: '0 MB',
+        speed: selectedServer.speed,
+      });
+
+      // Salvar no AsyncStorage
+      AsyncStorage.setItem('vpn_connected', 'true');
+      AsyncStorage.setItem('vpn_server', selectedServer.id);
+      AsyncStorage.setItem('vpn_key', key);
     }, 5000);
   };
 
-  const handleDisconnect = async () => {
-    if (connectionStartTime) {
-      const duration = Math.floor((Date.now() - connectionStartTime) / 1000);
-      addLog("disconnect", selectedServer?.name || "Desconhecido", duration);
-      updateStats(duration);
-      sendNotification("🔓 VPN Desconectada", `Desconectado após ${Math.floor(duration / 60)}m`);
-    }
+  // Desconectar VPN
+  const handleDisconnect = () => {
     setIsConnected(false);
-    setConnectionStartTime(null);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  };
+    setVpnKey('');
 
-  const toggleKillSwitch = (value: boolean) => {
-    setKillSwitchEnabled(value);
-    AsyncStorage.setItem("vpn_kill_switch", JSON.stringify(value));
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  };
+    // Enviar notificação push
+    Notifications.scheduleNotificationAsync({
+      content: {
+        title: '🔓 VPN Desconectada',
+        body: 'Sua conexão VPN foi encerrada',
+        data: { status: 'disconnected' },
+      },
+      trigger: null,
+    });
 
-  const toggleSplitTunneling = (value: boolean) => {
-    setSplitTunnelingEnabled(value);
-    AsyncStorage.setItem("vpn_split_tunneling", JSON.stringify(value));
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  };
-
-  const toggleAppBypass = (app: InstalledApp) => {
-    const isAlreadyBypassed = bypassedApps.some((a) => a.packageName === app.packageName);
-    const updated = isAlreadyBypassed
-      ? bypassedApps.filter((a) => a.packageName !== app.packageName)
-      : [...bypassedApps, app];
-    setBypassedApps(updated);
-    AsyncStorage.setItem("vpn_bypassed_apps", JSON.stringify(updated));
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    // Limpar AsyncStorage
+    AsyncStorage.removeItem('vpn_connected');
+    AsyncStorage.removeItem('vpn_key');
   };
 
   return (
-    <ScreenContainer className="p-4">
-      {/* Modal de Permissão de Localização */}
-      <Modal visible={showLocationModal} transparent animationType="fade">
-        <View className="flex-1 bg-black/50 justify-center items-center p-4">
-          <View className="bg-surface rounded-3xl p-6 gap-4 w-full max-w-sm border border-border">
-            <View className="items-center mb-2">
-              <Text className="text-4xl mb-2">📍</Text>
-              <Text className="text-2xl font-bold text-foreground text-center">Localização</Text>
-            </View>
-            <Text className="text-sm text-muted leading-relaxed text-center">
-              Muaco VPN usa sua localização para melhorar a conexão e sugerir servidores mais próximos.
+    <SafeAreaView style={styles.container}>
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Muaco VPN</Text>
+          <Text style={styles.headerSubtitle}>Apenas Angola 🇦🇴</Text>
+          {location && (
+            <Text style={styles.locationText}>
+              📍 {location.latitude.toFixed(2)}, {location.longitude.toFixed(2)}
             </Text>
+          )}
+        </View>
 
-            <View className="gap-3">
-              <Pressable
-                onPress={async () => {
-                  await requestLocationPermission();
-                  setShowLocationModal(false);
-                }}
-              >
-                {({ pressed }) => (
-                  <View
-                    className="bg-primary rounded-2xl py-4 items-center"
-                    style={{ opacity: pressed ? 0.8 : 1 }}
-                  >
-                    <Text className="text-white font-bold text-lg">Permitir</Text>
-                  </View>
-                )}
-              </Pressable>
-
-              <Pressable onPress={() => setShowLocationModal(false)}>
-                {({ pressed }) => (
-                  <View
-                    className="border border-border rounded-2xl py-4 items-center"
-                    style={{ opacity: pressed ? 0.7 : 1 }}
-                  >
-                    <Text className="text-foreground font-bold">Depois</Text>
-                  </View>
-                )}
-              </Pressable>
+        {/* Status Card */}
+        <View style={styles.statusCard}>
+          <View style={styles.statusRow}>
+            <Text style={styles.statusLabel}>STATUS</Text>
+            <View style={[styles.statusBadge, isConnected && styles.statusBadgeConnected]}>
+              <Text style={styles.statusBadgeText}>
+                {isConnected ? '✓ Conectado' : '✕ Desconectado'}
+              </Text>
             </View>
+          </View>
+          
+          {isConnected && vpnKey && (
+            <View style={styles.keyContainer}>
+              <Text style={styles.keyLabel}>🔑 Chave VPN Ativa</Text>
+              <Text style={styles.keyValue}>{vpnKey}</Text>
+            </View>
+          )}
+        </View>
+
+        {/* VPN Toggle Button - CAMADA SUPERIOR */}
+        <View style={styles.toggleContainer}>
+          <Animated.View
+            style={[
+              styles.pulseRing,
+              isConnected && {
+                transform: [{ scale }],
+                opacity,
+              },
+            ]}
+          />
+          
+          <TouchableOpacity
+            style={[
+              styles.toggleButton,
+              isConnected && styles.toggleButtonConnected,
+            ]}
+            onPress={isConnected ? handleDisconnect : handleConnect}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.toggleIcon}>
+              {isConnected ? '🔒' : '🔓'}
+            </Text>
+            <Text style={styles.toggleText}>
+              {isConnected ? 'Desconectar' : 'Conectar'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Servidor Selecionado */}
+        <View style={styles.serverCard}>
+          <Text style={styles.serverCardTitle}>Servidor Selecionado</Text>
+          <TouchableOpacity
+            style={styles.serverCardContent}
+            onPress={() => setShowServerModal(true)}
+          >
+            <Text style={styles.serverCardName}>{selectedServer.name}</Text>
+            <Text style={styles.serverCardProtocol}>{selectedServer.protocol}</Text>
+            <Text style={styles.serverCardPing}>Ping: {selectedServer.ping}</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Estatísticas */}
+        <View style={styles.statsContainer}>
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>Tempo</Text>
+            <Text style={styles.statValue}>{stats.connectionTime}</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>Dados</Text>
+            <Text style={styles.statValue}>{stats.dataUsed}</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>Velocidade</Text>
+            <Text style={styles.statValue}>{stats.speed}</Text>
+          </View>
+        </View>
+
+        {/* Kill Switch */}
+        <View style={styles.killSwitchContainer}>
+          <View style={styles.killSwitchLabel}>
+            <Text style={styles.killSwitchTitle}>⚡ Kill Switch</Text>
+            <Text style={styles.killSwitchDesc}>Bloqueia tráfego se VPN cair</Text>
+          </View>
+          <Switch
+            value={killSwitch}
+            onValueChange={setKillSwitch}
+            trackColor={{ false: COLORS.bgTertiary, true: COLORS.success }}
+            thumbColor={killSwitch ? COLORS.white : COLORS.gray400}
+          />
+        </View>
+      </ScrollView>
+
+      {/* Modal - Selecionar Servidor */}
+      <Modal
+        visible={showServerModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowServerModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Selecionar Servidor</Text>
+              <TouchableOpacity onPress={() => setShowServerModal(false)}>
+                <Text style={styles.modalClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <FlatList
+              data={VPN_SERVERS}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.serverItem,
+                    selectedServer.id === item.id && styles.serverItemActive,
+                  ]}
+                  onPress={() => {
+                    setSelectedServer(item);
+                    setShowServerModal(false);
+                  }}
+                >
+                  <View style={styles.serverItemContent}>
+                    <Text style={styles.serverItemName}>{item.name}</Text>
+                    <Text style={styles.serverItemMeta}>{item.protocol}</Text>
+                    <Text style={styles.serverItemSpeed}>Ping: {item.ping}</Text>
+                  </View>
+                  {selectedServer.id === item.id && (
+                    <Text style={styles.checkmark}>✓</Text>
+                  )}
+                </TouchableOpacity>
+              )}
+              scrollEnabled={false}
+            />
           </View>
         </View>
       </Modal>
 
-      {/* Modal de Permissão VPN */}
-      <Modal visible={showPermissionModal} transparent animationType="fade">
-        <View className="flex-1 bg-black/50 justify-center items-center p-4">
-          <View className="bg-surface rounded-3xl p-6 gap-4 w-full max-w-sm border border-border">
-            <View className="items-center mb-2">
-              <Text className="text-4xl mb-2">🔐</Text>
-              <Text className="text-2xl font-bold text-foreground text-center">Permissão VPN</Text>
-            </View>
-            <Text className="text-sm text-muted leading-relaxed text-center">
+      {/* Modal - Permissão VPN */}
+      <Modal
+        visible={showVPNPermission}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowVPNPermission(false)}
+      >
+        <View style={styles.permissionOverlay}>
+          <View style={styles.permissionContent}>
+            <Text style={styles.permissionIcon}>🔐</Text>
+            <Text style={styles.permissionTitle}>Permissão VPN</Text>
+            <Text style={styles.permissionDesc}>
               Muaco VPN precisa de permissão para gerenciar a conexão VPN do seu dispositivo.
             </Text>
 
-            <View className="gap-3">
-              <Pressable
-                onPress={async () => {
-                  await requestVPNPermission();
-                  setShowPermissionModal(false);
-                }}
-                disabled={isRequesting}
-              >
-                {({ pressed }) => (
-                  <View
-                    className="bg-primary rounded-2xl py-4 items-center"
-                    style={{ opacity: pressed ? 0.8 : 1 }}
-                  >
-                    <Text className="text-white font-bold text-lg">
-                      {isRequesting ? "Solicitando..." : "Conceder"}
-                    </Text>
-                  </View>
-                )}
-              </Pressable>
+            <TouchableOpacity
+              style={styles.permissionButton}
+              onPress={confirmVPNConnection}
+            >
+              <Text style={styles.permissionButtonText}>Conceder Permissão</Text>
+            </TouchableOpacity>
 
-              <Pressable onPress={() => setShowPermissionModal(false)}>
-                {({ pressed }) => (
-                  <View
-                    className="border border-border rounded-2xl py-4 items-center"
-                    style={{ opacity: pressed ? 0.7 : 1 }}
-                  >
-                    <Text className="text-foreground font-bold">Depois</Text>
-                  </View>
-                )}
-              </Pressable>
-            </View>
+            <TouchableOpacity
+              style={styles.permissionButtonSecondary}
+              onPress={() => setShowVPNPermission(false)}
+            >
+              <Text style={styles.permissionButtonSecondaryText}>Depois</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
-
-      <ScrollView showsVerticalScrollIndicator={false}>
-        <View className="gap-6 pb-6">
-          {/* Header */}
-          <View className="gap-1">
-            <Text className="text-4xl font-bold text-foreground">Muaco VPN</Text>
-            <Text className="text-sm text-primary font-semibold">Apenas Angola 🇦🇴</Text>
-            {userLocation && (
-              <Text className="text-xs text-muted">
-                📍 {userLocation.latitude.toFixed(4)}, {userLocation.longitude.toFixed(4)}
-              </Text>
-            )}
-          </View>
-
-          {/* Avisos de Permissão */}
-          {!vpnPermissionGranted && (
-            <View className="bg-warning/10 rounded-2xl p-4 border border-warning gap-2">
-              <Text className="text-sm font-bold text-warning">⚠️ Permissão VPN Necessária</Text>
-              <Text className="text-xs text-muted">Clique em Conectar para solicitar.</Text>
-            </View>
-          )}
-          {!locationPermissionGranted && (
-            <View className="bg-primary/10 rounded-2xl p-4 border border-primary/30 gap-2">
-              <Text className="text-sm font-bold text-primary">📍 Localização Desativada</Text>
-              <Text className="text-xs text-muted">Ative para melhorar a VPN.</Text>
-            </View>
-          )}
-
-          {/* Status Card - Novo Design */}
-          <View className="bg-gradient-to-br from-primary/20 to-primary/5 rounded-3xl p-6 border border-primary/30">
-            <Text className="text-xs text-muted mb-2 font-semibold">STATUS DA CONEXÃO</Text>
-            <Text className="text-3xl font-bold text-foreground mb-4">
-              {isConnecting ? "⏳ Conectando..." : isConnected ? "🔒 VPN Ligada" : "🔓 Desconectado"}
-            </Text>
-            {isConnected && selectedServer && (
-              <View className="gap-2 pt-4 border-t border-primary/20">
-                <View className="flex-row justify-between">
-                  <Text className="text-xs text-muted">Servidor:</Text>
-                  <Text className="text-xs font-bold text-foreground">{selectedServer.name}</Text>
-                </View>
-                <View className="flex-row justify-between">
-                  <Text className="text-xs text-muted">Protocolo:</Text>
-                  <Text className="text-xs font-bold text-foreground">
-                    {selectedServer.protocol}:{selectedServer.port}
-                  </Text>
-                </View>
-                <Text className="text-xs text-success mt-2 font-bold">✓ VPN Ativa no Dispositivo</Text>
-              </View>
-            )}
-          </View>
-
-          {/* Botão Conectar/Desconectar - Grande */}
-          {!isConnected ? (
-            <Pressable onPress={handleConnect} disabled={isConnecting}>
-              {({ pressed }) => (
-                <View
-                  className="bg-primary rounded-3xl py-5 items-center active:scale-95"
-                  style={{ opacity: pressed ? 0.8 : 1 }}
-                >
-                  <Text className="text-white font-bold text-xl">
-                    {isConnecting ? "Conectando..." : "Conectar"}
-                  </Text>
-                </View>
-              )}
-            </Pressable>
-          ) : (
-            <Pressable onPress={handleDisconnect}>
-              {({ pressed }) => (
-                <View
-                  className="bg-error rounded-3xl py-5 items-center active:scale-95"
-                  style={{ opacity: pressed ? 0.8 : 1 }}
-                >
-                  <Text className="text-white font-bold text-xl">Desconectar</Text>
-                </View>
-              )}
-            </Pressable>
-          )}
-
-          {/* Kill Switch */}
-          <View className="bg-surface rounded-2xl p-4 border border-border">
-            <View className="flex-row items-center justify-between">
-              <View className="flex-1">
-                <Text className="text-sm font-bold text-foreground">🛡️ Kill Switch</Text>
-                <Text className="text-xs text-muted">Bloqueia tráfego se VPN cair</Text>
-              </View>
-              <Switch
-                value={killSwitchEnabled}
-                onValueChange={toggleKillSwitch}
-                trackColor={{ false: colors.border, true: colors.primary }}
-                thumbColor={killSwitchEnabled ? colors.primary : colors.muted}
-              />
-            </View>
-          </View>
-
-          {/* Split Tunneling */}
-          <View className="bg-surface rounded-2xl p-4 border border-border">
-            <View className="flex-row items-center justify-between mb-3">
-              <View className="flex-1">
-                <Text className="text-sm font-bold text-foreground">🔀 Split Tunneling</Text>
-                <Text className="text-xs text-muted">{bypassedApps.length} apps excluídos</Text>
-              </View>
-              <Switch
-                value={splitTunnelingEnabled}
-                onValueChange={toggleSplitTunneling}
-                trackColor={{ false: colors.border, true: colors.primary }}
-                thumbColor={splitTunnelingEnabled ? colors.primary : colors.muted}
-              />
-            </View>
-
-            {splitTunnelingEnabled && (
-              <Pressable onPress={() => setShowApps(!showApps)}>
-                <Text className="text-sm font-bold text-primary">
-                  {showApps ? "Ocultar" : "Gerenciar"} {allApps.length} Apps
-                </Text>
-              </Pressable>
-            )}
-
-            {showApps && splitTunnelingEnabled && (
-              <View className="bg-surface rounded-xl p-3 border border-border max-h-64 mt-3">
-                {loadingApps ? (
-                  <ActivityIndicator size="large" color={colors.primary} />
-                ) : (
-                  <FlatList
-                    data={allApps}
-                    scrollEnabled={true}
-                    keyExtractor={(item) => item.packageName}
-                    renderItem={({ item }) => {
-                      const isBypassed = bypassedApps.some((a) => a.packageName === item.packageName);
-                      return (
-                        <Pressable onPress={() => toggleAppBypass(item)}>
-                          {({ pressed }) => (
-                            <View
-                              className={`flex-row items-center justify-between p-2 rounded mb-1 ${
-                                isBypassed
-                                  ? "bg-primary/10 border border-primary"
-                                  : "bg-surface border border-border"
-                              }`}
-                              style={{ opacity: pressed ? 0.7 : 1 }}
-                            >
-                              <Text className="text-xs font-bold text-foreground flex-1">
-                                {item.name}
-                              </Text>
-                              {isBypassed && <Text className="text-xs text-primary">✓</Text>}
-                            </View>
-                          )}
-                        </Pressable>
-                      );
-                    }}
-                  />
-                )}
-              </View>
-            )}
-          </View>
-
-          {/* Servidores */}
-          <View className="gap-3">
-            <Text className="text-sm font-bold text-foreground">🌍 Servidores OpenVPN Angola</Text>
-            {SERVERS.map((server) => (
-              <Pressable
-                key={server.id}
-                onPress={() => {
-                  setSelectedServer(server);
-                  AsyncStorage.setItem("vpn_server", JSON.stringify(server));
-                }}
-                disabled={isConnected}
-              >
-                {({ pressed }) => (
-                  <View
-                    className={`flex-row items-center justify-between p-4 rounded-2xl border ${
-                      selectedServer?.id === server.id
-                        ? "bg-primary/10 border-primary"
-                        : "bg-surface border-border"
-                    }`}
-                    style={{ opacity: pressed ? 0.7 : 1 }}
-                  >
-                    <View className="flex-1">
-                      <Text className="text-sm font-bold text-foreground">{server.name}</Text>
-                      <Text className="text-xs text-muted">
-                        {server.protocol}:{server.port}
-                      </Text>
-                    </View>
-                    {selectedServer?.id === server.id && (
-                      <Text className="text-primary font-bold">✓</Text>
-                    )}
-                  </View>
-                )}
-              </Pressable>
-            ))}
-          </View>
-
-          {/* Estatísticas */}
-          <View className="gap-3">
-            <Pressable onPress={() => setShowStats(!showStats)}>
-              <Text className="text-sm font-bold text-primary">
-                {showStats ? "Ocultar" : "Ver"} 📊 Estatísticas
-              </Text>
-            </Pressable>
-
-            {showStats && (
-              <View className="bg-surface rounded-2xl p-4 border border-border gap-3">
-                <View className="flex-row justify-between">
-                  <Text className="text-xs text-muted">Conexões:</Text>
-                  <Text className="text-xs font-bold text-foreground">
-                    {stats.totalConnections}
-                  </Text>
-                </View>
-                <View className="flex-row justify-between">
-                  <Text className="text-xs text-muted">Tempo Total:</Text>
-                  <Text className="text-xs font-bold text-foreground">
-                    {Math.floor(stats.totalTimeConnected / 60)}m
-                  </Text>
-                </View>
-                <View className="flex-row justify-between">
-                  <Text className="text-xs text-muted">Dados:</Text>
-                  <Text className="text-xs font-bold text-foreground">
-                    {stats.totalDataUsed} MB
-                  </Text>
-                </View>
-              </View>
-            )}
-          </View>
-
-          {/* Logs */}
-          <View className="gap-3">
-            <Pressable onPress={() => setShowLogs(!showLogs)}>
-              <Text className="text-sm font-bold text-primary">
-                {showLogs ? "Ocultar" : "Ver"} 📋 Logs ({logs.length})
-              </Text>
-            </Pressable>
-
-            {showLogs && (
-              <View className="bg-surface rounded-2xl p-3 gap-2 max-h-48 border border-border">
-                {logs.length === 0 ? (
-                  <Text className="text-xs text-muted">Sem logs</Text>
-                ) : (
-                  logs.slice(0, 10).map((log) => (
-                    <View key={log.id} className="border-b border-border pb-2">
-                      <Text className="text-xs font-bold text-foreground">
-                        {log.action === "connect" ? "🔗" : "🔌"} {log.server}
-                      </Text>
-                      <Text className="text-xs text-muted">
-                        Duração: {Math.floor(log.duration / 60)}m {log.duration % 60}s
-                      </Text>
-                    </View>
-                  ))
-                )}
-              </View>
-            )}
-          </View>
-        </View>
-      </ScrollView>
-    </ScreenContainer>
+    </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.bgDark,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  header: {
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.xl,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.bgSecondary,
+  },
+  headerTitle: {
+    fontSize: TYPOGRAPHY.sizes.h2,
+    fontWeight: '700' as any,
+    color: COLORS.white,
+  },
+  headerSubtitle: {
+    fontSize: TYPOGRAPHY.sizes.bodySmall,
+    color: COLORS.gray400,
+    marginTop: SPACING.xs,
+  },
+  locationText: {
+    fontSize: TYPOGRAPHY.sizes.caption,
+    color: COLORS.primary,
+    marginTop: SPACING.sm,
+  },
+  statusCard: {
+    marginHorizontal: SPACING.lg,
+    marginVertical: SPACING.lg,
+    backgroundColor: COLORS.bgSecondary,
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.bgTertiary,
+    ...SHADOWS.md,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  statusLabel: {
+    fontSize: TYPOGRAPHY.sizes.caption,
+    color: COLORS.gray400,
+    fontWeight: '600' as any,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  statusBadge: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    backgroundColor: COLORS.danger,
+    borderRadius: BORDER_RADIUS.full,
+  },
+  statusBadgeConnected: {
+    backgroundColor: COLORS.success,
+  },
+  statusBadgeText: {
+    fontSize: TYPOGRAPHY.sizes.caption,
+    color: COLORS.white,
+    fontWeight: '700' as any,
+  },
+  keyContainer: {
+    marginTop: SPACING.lg,
+    paddingTop: SPACING.lg,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.bgTertiary,
+  },
+  keyLabel: {
+    fontSize: TYPOGRAPHY.sizes.caption,
+    color: COLORS.gray400,
+    fontWeight: '600' as any,
+    marginBottom: SPACING.sm,
+  },
+  keyValue: {
+    fontSize: TYPOGRAPHY.sizes.body,
+    color: COLORS.primary,
+    fontWeight: '700' as any,
+    fontFamily: 'monospace',
+  },
+  toggleContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.xxxl,
+  },
+  pulseRing: {
+    position: 'absolute',
+    width: 200,
+    height: 200,
+    borderRadius: BORDER_RADIUS.full,
+    backgroundColor: COLORS.success,
+    opacity: 0.3,
+  },
+  toggleButton: {
+    width: 160,
+    height: 160,
+    borderRadius: BORDER_RADIUS.full,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...SHADOWS.xl,
+    zIndex: 10,
+  },
+  toggleButtonConnected: {
+    backgroundColor: COLORS.success,
+  },
+  toggleIcon: {
+    fontSize: 48,
+    marginBottom: SPACING.sm,
+  },
+  toggleText: {
+    fontSize: TYPOGRAPHY.sizes.body,
+    fontWeight: '700' as any,
+    color: COLORS.white,
+  },
+  serverCard: {
+    marginHorizontal: SPACING.lg,
+    marginVertical: SPACING.md,
+    backgroundColor: COLORS.bgSecondary,
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.bgTertiary,
+    ...SHADOWS.md,
+  },
+  serverCardTitle: {
+    fontSize: TYPOGRAPHY.sizes.caption,
+    color: COLORS.gray400,
+    fontWeight: '600' as any,
+    marginBottom: SPACING.sm,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  serverCardContent: {
+    paddingVertical: SPACING.sm,
+  },
+  serverCardName: {
+    fontSize: TYPOGRAPHY.sizes.body,
+    fontWeight: '700' as any,
+    color: COLORS.white,
+    marginBottom: SPACING.xs,
+  },
+  serverCardProtocol: {
+    fontSize: TYPOGRAPHY.sizes.caption,
+    color: COLORS.gray400,
+    marginBottom: SPACING.xs,
+  },
+  serverCardPing: {
+    fontSize: TYPOGRAPHY.sizes.caption,
+    color: COLORS.success,
+    fontWeight: '600' as any,
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    marginHorizontal: SPACING.lg,
+    marginVertical: SPACING.lg,
+    gap: SPACING.md,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: COLORS.bgSecondary,
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.lg,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.bgTertiary,
+    ...SHADOWS.sm,
+  },
+  statLabel: {
+    fontSize: TYPOGRAPHY.sizes.caption,
+    color: COLORS.gray400,
+    fontWeight: '500' as any,
+    marginBottom: SPACING.sm,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  statValue: {
+    fontSize: TYPOGRAPHY.sizes.h4,
+    fontWeight: '700' as any,
+    color: COLORS.primary,
+  },
+  killSwitchContainer: {
+    marginHorizontal: SPACING.lg,
+    marginVertical: SPACING.lg,
+    backgroundColor: COLORS.bgSecondary,
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.bgTertiary,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    ...SHADOWS.md,
+  },
+  killSwitchLabel: {
+    flex: 1,
+  },
+  killSwitchTitle: {
+    fontSize: TYPOGRAPHY.sizes.body,
+    fontWeight: '700' as any,
+    color: COLORS.white,
+    marginBottom: SPACING.xs,
+  },
+  killSwitchDesc: {
+    fontSize: TYPOGRAPHY.sizes.caption,
+    color: COLORS.gray400,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: COLORS.bgSecondary,
+    borderTopLeftRadius: BORDER_RADIUS.xl,
+    borderTopRightRadius: BORDER_RADIUS.xl,
+    paddingTop: SPACING.lg,
+    paddingHorizontal: SPACING.lg,
+    maxHeight: '80%',
+    borderWidth: 1,
+    borderColor: COLORS.bgTertiary,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.lg,
+  },
+  modalTitle: {
+    fontSize: TYPOGRAPHY.sizes.h3,
+    fontWeight: '700' as any,
+    color: COLORS.white,
+  },
+  modalClose: {
+    fontSize: 24,
+    color: COLORS.gray400,
+  },
+  serverItem: {
+    backgroundColor: COLORS.bgTertiary,
+    borderRadius: BORDER_RADIUS.md,
+    marginBottom: SPACING.md,
+    padding: SPACING.lg,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.bgTertiary,
+  },
+  serverItemActive: {
+    borderColor: COLORS.primary,
+    borderWidth: 2,
+  },
+  serverItemContent: {
+    flex: 1,
+  },
+  serverItemName: {
+    fontSize: TYPOGRAPHY.sizes.body,
+    fontWeight: '700' as any,
+    color: COLORS.white,
+    marginBottom: SPACING.xs,
+  },
+  serverItemMeta: {
+    fontSize: TYPOGRAPHY.sizes.caption,
+    color: COLORS.gray400,
+    marginBottom: SPACING.xs,
+  },
+  serverItemSpeed: {
+    fontSize: TYPOGRAPHY.sizes.caption,
+    color: COLORS.success,
+  },
+  checkmark: {
+    fontSize: 24,
+    color: COLORS.primary,
+  },
+  permissionOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  permissionContent: {
+    backgroundColor: COLORS.bgSecondary,
+    borderRadius: BORDER_RADIUS.xl,
+    padding: SPACING.xl,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.bgTertiary,
+    width: '85%',
+    ...SHADOWS.xl,
+  },
+  permissionIcon: {
+    fontSize: 48,
+    marginBottom: SPACING.lg,
+  },
+  permissionTitle: {
+    fontSize: TYPOGRAPHY.sizes.h3,
+    fontWeight: '700' as any,
+    color: COLORS.white,
+    marginBottom: SPACING.md,
+  },
+  permissionDesc: {
+    fontSize: TYPOGRAPHY.sizes.body,
+    color: COLORS.gray400,
+    textAlign: 'center',
+    marginBottom: SPACING.xl,
+    lineHeight: 22,
+  },
+  permissionButton: {
+    backgroundColor: COLORS.primary,
+    borderRadius: BORDER_RADIUS.md,
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.md,
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: SPACING.md,
+    ...SHADOWS.md,
+  },
+  permissionButtonText: {
+    fontSize: TYPOGRAPHY.sizes.body,
+    fontWeight: '700' as any,
+    color: COLORS.white,
+  },
+  permissionButtonSecondary: {
+    backgroundColor: COLORS.bgTertiary,
+    borderRadius: BORDER_RADIUS.md,
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.md,
+    width: '100%',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.bgTertiary,
+  },
+  permissionButtonSecondaryText: {
+    fontSize: TYPOGRAPHY.sizes.body,
+    fontWeight: '600' as any,
+    color: COLORS.gray400,
+  },
+});
