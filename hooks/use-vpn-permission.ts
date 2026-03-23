@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import * as Permissions from "expo-permissions";
 import { Platform, Linking } from "react-native";
 
 export function useVPNPermission() {
@@ -12,13 +11,8 @@ export function useVPNPermission() {
 
   const checkVPNPermission = async () => {
     if (Platform.OS !== "android") return;
-
-    try {
-      const { status } = await Permissions.getAsync(Permissions.NOTIFICATIONS);
-      setVpnPermissionGranted(status === "granted");
-    } catch (error) {
-      console.error("Erro ao verificar permissão VPN:", error);
-    }
+    // Simular verificação de permissão VPN
+    setVpnPermissionGranted(true);
   };
 
   const requestVPNPermission = async () => {
@@ -26,17 +20,13 @@ export function useVPNPermission() {
 
     setIsRequesting(true);
     try {
-      const { status } = await Permissions.askAsync(Permissions.NOTIFICATIONS);
-      setVpnPermissionGranted(status === "granted");
-
-      if (status === "granted") {
-        // Abrir configurações de VPN do Android
-        try {
-          await Linking.openURL("android-app://com.android.settings/");
-        } catch (error) {
-          console.error("Erro ao abrir settings:", error);
-        }
+      // Abrir configurações de VPN do Android
+      try {
+        await Linking.openURL("android-app://com.android.settings/");
+      } catch (error) {
+        console.error("Erro ao abrir settings:", error);
       }
+      setVpnPermissionGranted(true);
     } catch (error) {
       console.error("Erro ao solicitar permissão VPN:", error);
     } finally {
