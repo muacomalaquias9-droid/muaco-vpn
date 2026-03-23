@@ -17,6 +17,7 @@ import * as Notifications from 'expo-notifications';
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS, SPACING, TYPOGRAPHY, BORDER_RADIUS, SHADOWS } from '@/lib/theme-premium';
+import { useAutoServerSelection } from '@/hooks/use-auto-server-selection';
 
 // VPN Servers Angola
 const VPN_SERVERS = [
@@ -53,8 +54,19 @@ const VPN_SERVERS = [
 ];
 
 export default function HomeScreen() {
+  const { suggestedServer, isLoading: geoLoading } = useAutoServerSelection();
   const [isConnected, setIsConnected] = useState(false);
   const [selectedServer, setSelectedServer] = useState(VPN_SERVERS[0]);
+
+  // Usar servidor sugerido automaticamente
+  useEffect(() => {
+    if (suggestedServer) {
+      const server = VPN_SERVERS.find(s => s.id === suggestedServer.id);
+      if (server) {
+        setSelectedServer(server);
+      }
+    }
+  }, [suggestedServer]);
   const [vpnKey, setVpnKey] = useState('');
   const [killSwitch, setKillSwitch] = useState(false);
   const [showServerModal, setShowServerModal] = useState(false);
@@ -99,16 +111,7 @@ export default function HomeScreen() {
     outputRange: [0.5, 0],
   });
 
-  // Obter localização
-  useEffect(() => {
-    (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status === 'granted') {
-        const loc = await Location.getCurrentPositionAsync({});
-        setLocation(loc.coords);
-      }
-    })();
-  }, []);
+
 
   // Gerar chave VPN
   const generateVPNKey = () => {
