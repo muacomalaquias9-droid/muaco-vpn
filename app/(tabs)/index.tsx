@@ -57,13 +57,13 @@ export default function HomeScreen() {
       <ScrollView showsVerticalScrollIndicator={false}>
         <View className="gap-6">
           <Text className="text-3xl font-bold text-foreground">Muaco VPN</Text>
-          <Text className="text-xs text-muted">Apenas Angola 🇦🇴</Text>
+          <Text className="text-xs text-muted">Apenas Angola</Text>
 
           {/* Status */}
           <View className="bg-primary/10 rounded-2xl p-6 border border-primary/20">
             <Text className="text-sm text-muted mb-2">Status</Text>
             <Text className="text-2xl font-bold text-foreground mb-4">
-              {isConnecting ? "⏳ Conectando..." : isConnected ? "🔒 Conectado" : "🔓 Desconectado"}
+              {isConnecting ? "Conectando..." : isConnected ? "Conectado" : "Desconectado"}
             </Text>
             {isConnected && selectedServer && (
               <View className="gap-1">
@@ -121,7 +121,7 @@ export default function HomeScreen() {
                       <Text className="text-sm font-bold text-foreground">{server.name}</Text>
                       <Text className="text-xs text-muted">{server.operator}</Text>
                     </View>
-                    {selectedServer?.id === server.id && <Text className="text-primary">✓</Text>}
+                    {selectedServer?.id === server.id && <Text className="text-primary font-bold">●</Text>}
                   </View>
                 )}
               </Pressable>
@@ -144,7 +144,7 @@ export default function HomeScreen() {
                   logs.slice(0, 10).map((log) => (
                     <View key={log.id} className="border-b border-border pb-2">
                       <Text className="text-xs font-bold text-foreground">
-                        {log.action === "connect" ? "🔗" : "🔌"} {log.server}
+                        {log.server}
                       </Text>
                       <Text className="text-xs text-muted">{log.message}</Text>
                       <Text className="text-xs text-muted">
