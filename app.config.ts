@@ -12,6 +12,11 @@ const config: ExpoConfig = {
   ios: {
     supportsTablet: true,
     bundleIdentifier: "com.muacovpn.app",
+    infoPlist: {
+      NSLocalNetworkUsageDescription: "Muaco VPN precisa acessar a rede local",
+      NSBonjourServiceTypes: ["_vpn._tcp"],
+      NSLocationWhenInUseUsageDescription: "Localização para selecionar servidor mais próximo",
+    },
   },
   android: {
     adaptiveIcon: {
@@ -22,8 +27,30 @@ const config: ExpoConfig = {
     permissions: [
       "INTERNET",
       "ACCESS_NETWORK_STATE",
+      "ACCESS_WIFI_STATE",
+      "CHANGE_NETWORK_STATE",
       "BIND_VPN_SERVICE",
       "FOREGROUND_SERVICE",
+      "WAKE_LOCK",
+      "ACCESS_FINE_LOCATION",
+      "ACCESS_COARSE_LOCATION",
+      "POST_NOTIFICATIONS",
+      "RECEIVE_BOOT_COMPLETED",
+      "CHANGE_WIFI_STATE",
+      "MODIFY_PHONE_STATE",
+    ],
+    intentFilters: [
+      {
+        action: "VIEW",
+        autoVerify: true,
+        data: [
+          {
+            scheme: "muacovpn",
+            host: "*",
+          },
+        ],
+        category: ["BROWSABLE", "DEFAULT"],
+      },
     ],
   },
   web: {
@@ -32,6 +59,8 @@ const config: ExpoConfig = {
   },
   plugins: [
     "expo-router",
+    ["expo-location", { locationAlwaysAndWhenInUsePermission: "Muaco VPN precisa de localização para selecionar servidor" }],
+    ["expo-notifications", { icon: "./assets/images/notification-icon.png" }],
     [
       "expo-splash-screen",
       {

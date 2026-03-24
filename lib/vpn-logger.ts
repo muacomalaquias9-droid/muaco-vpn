@@ -3,16 +3,18 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 export interface VPNLog {
   id: string;
   timestamp: number;
-  action: "connect" | "disconnect" | "error";
+  action: "connect" | "disconnect" | "error" | "protocol_switch";
   server: string;
   operator: string;
+  protocol?: "OpenVPN" | "WireGuard";
+  port?: number;
   duration?: number;
   status: "success" | "failed";
   message: string;
 }
 
 const LOGS_KEY = "vpn_logs";
-const MAX_LOGS = 50;
+const MAX_LOGS = 100;
 
 export class VPNLogger {
   static async addLog(log: Omit<VPNLog, "id" | "timestamp">): Promise<void> {

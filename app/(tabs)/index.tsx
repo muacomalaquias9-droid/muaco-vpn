@@ -1,37 +1,64 @@
 import { useState, useEffect, useRef } from "react";
 import { View, Text, Pressable, ScrollView, Image, Modal, ActivityIndicator } from "react-native";
 import * as Haptics from "expo-haptics";
+import * as Notifications from "expo-notifications";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
+
+// Configurar notificações
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
 
 const SERVERS = [
   { 
     id: 1, 
     name: "Unitel NET", 
     operator: "Unitel", 
-    protocol: "OpenVPN UDP", 
+    protocol: "OpenVPN", 
     port: 1194,
     ping: "12ms",
-    logo: require("@/assets/images/unitel-logo.png")
+    logo: require("@/assets/images/unitel-logo.png"),
+    ip: "vpn-unitel.ao",
+    country: "Angola",
+    city: "Luanda",
+    latitude: -8.8383,
+    longitude: 13.2344
   },
   { 
     id: 2, 
     name: "Africell 01", 
     operator: "Africell", 
-    protocol: "OpenVPN UDP", 
+    protocol: "OpenVPN", 
     port: 1194,
     ping: "18ms",
-    logo: require("@/assets/images/africell-logo.png")
+    logo: require("@/assets/images/africell-logo.png"),
+    ip: "vpn-africell-01.ao",
+    country: "Angola",
+    city: "Luanda",
+    latitude: -8.8383,
+    longitude: 13.2344
   },
   { 
     id: 3, 
     name: "Africell 02", 
     operator: "Africell", 
-    protocol: "OpenVPN TCP", 
-    port: 443,
+    protocol: "WireGuard", 
+    port: 51820,
     ping: "22ms",
-    logo: require("@/assets/images/africell-logo.png")
+    logo: require("@/assets/images/africell-logo.png"),
+    ip: "vpn-africell-02.ao",
+    country: "Angola",
+    city: "Luanda",
+    latitude: -8.8383,
+    longitude: 13.2344
   },
 ];
 
@@ -43,12 +70,24 @@ export default function HomeScreen() {
   const [showDashboard, setShowDashboard] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [showPermissionModal, setShowPermissionModal] = useState(false);
+  const [protocol, setProtocol] = useState<"OpenVPN" | "WireGuard">("OpenVPN");
   
   // Contadores
   const [connectionTime, setConnectionTime] = useState(0);
   const [dataUsed, setDataUsed] = useState(0);
   const connectionIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const dataIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Inicializar notificações
+  useEffect(() => {
+    const setupNotifications = async () => {
+      const { status } = await Notifications.getPermissionsAsync();
+      if (status !== "granted") {
+        await Notifications.requestPermissionsAsync();
+      }
+    };
+    setupNotifications();
+  }, []);
 
   // Timer para conexão
   useEffect(() => {
@@ -80,9 +119,20 @@ export default function HomeScreen() {
     return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
 
+  const sendNotification = async (title: string, body: string) => {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title,
+        body,
+        sound: true,
+        badge: 1,
+      },
+      trigger: null,
+    });
+  };
+
   const handleConnect = async () => {
     if (!selectedServer) return;
-    
     setShowPermissionModal(true);
   };
 
@@ -90,27 +140,71 @@ export default function HomeScreen() {
     setShowPermissionModal(false);
     setIsConnecting(true);
     
-    // Simular conexão VPN real com 4 segundos
-    setTimeout(() => {
+    // Enviar notificação de conexão iniciada
+    await sendNotification(
+      "Muaco VPN",
+      `Conectando a ${selectedServer.name}...`
+    );
+
+    // Simular conexão VPN real com 5 segundos
+    setTimeout(async () => {
       setIsConnecting(false);
       setIsConnected(true);
+      setProtocol(selectedServer.protocol as "OpenVPN" | "WireGuard");
+      
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }, 4000);
+      
+      // Enviar notificação de conexão bem-sucedida
+      await sendNotification(
+        "VPN Conectada",
+        `Conectado a ${selectedServer.name} via ${selectedServer.protocol} (Porta ${selectedServer.port})`
+      );
+    }, 5000);
   };
 
-  const handleDisconnect = () => {
+  const handleDisconnect = async () => {
     setIsConnected(false);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    
+    // Enviar notificação de desconexão
+    await sendNotification(
+      "VPN Desconectada",
+      `Desconectado de ${selectedServer.name} após ${formatTime(connectionTime)}`
+    );
   };
 
   const handleUpdateServers = async () => {
     setIsUpdating(true);
     
+    // Enviar notificação de atualização
+    await sendNotification(
+      "Atualizando Servidores",
+      "Buscando servidores mais rápidos..."
+    );
+    
     // Simular atualização de servidores com 4 segundos
-    setTimeout(() => {
+    setTimeout(async () => {
       setIsUpdating(false);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      
+      // Enviar notificação de atualização concluída
+      await sendNotification(
+        "Servidores Atualizados",
+        "Lista de servidores atualizada com sucesso"
+      );
     }, 4000);
+  };
+
+  const switchProtocol = async (newProtocol: "OpenVPN" | "WireGuard") => {
+    if (!isConnected) return;
+    
+    setProtocol(newProtocol);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    
+    await sendNotification(
+      "Protocolo Alterado",
+      `Protocolo alterado para ${newProtocol}`
+    );
   };
 
   return (
@@ -143,7 +237,7 @@ export default function HomeScreen() {
                 </Text>
                 <View className={`px-4 py-2 rounded-full ${isConnected ? "bg-red-500" : "bg-gray-700"}`}>
                   <Text className="text-white text-sm font-bold">
-                    {isConnected ? "✕ Desconectar" : "○ Desconectado"}
+                    {isConnected ? "Desconectar" : "Desconectado"}
                   </Text>
                 </View>
               </View>
@@ -181,11 +275,36 @@ export default function HomeScreen() {
                 />
                 <View className="flex-1">
                   <Text className="text-white font-bold">{selectedServer.name}</Text>
-                  <Text className="text-gray-400 text-xs">{selectedServer.protocol} {selectedServer.port}</Text>
+                  <Text className="text-gray-400 text-xs">{protocol} Porta {selectedServer.port}</Text>
                   <Text className="text-green-400 text-xs font-bold">Ping: {selectedServer.ping}</Text>
                 </View>
               </View>
             </View>
+
+            {/* Protocolo Selecionado */}
+            {isConnected && (
+              <View className="bg-gray-900 rounded-2xl p-4 border border-gray-800">
+                <Text className="text-gray-400 text-xs font-bold mb-3">PROTOCOLO</Text>
+                <View className="flex-row gap-2">
+                  <Pressable
+                    onPress={() => switchProtocol("OpenVPN")}
+                    className={`flex-1 py-3 rounded-lg items-center ${
+                      protocol === "OpenVPN" ? "bg-blue-600" : "bg-gray-800"
+                    }`}
+                  >
+                    <Text className="text-white font-bold">OpenVPN</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => switchProtocol("WireGuard")}
+                    className={`flex-1 py-3 rounded-lg items-center ${
+                      protocol === "WireGuard" ? "bg-blue-600" : "bg-gray-800"
+                    }`}
+                  >
+                    <Text className="text-white font-bold">WireGuard</Text>
+                  </Pressable>
+                </View>
+              </View>
+            )}
 
             {/* Dados e Tempo */}
             {isConnected && (
@@ -232,7 +351,7 @@ export default function HomeScreen() {
                       />
                       <View className="flex-1">
                         <Text className="text-white font-bold">{server.name}</Text>
-                        <Text className="text-gray-400 text-xs">{server.protocol}</Text>
+                        <Text className="text-gray-400 text-xs">{server.protocol} Porta {server.port}</Text>
                       </View>
                       {selectedServer.id === server.id && (
                         <MaterialIcons name="check-circle" size={20} color="#3B82F6" />
