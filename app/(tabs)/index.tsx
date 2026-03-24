@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { View, Text, Pressable, ScrollView, Image, Modal, ActivityIndicator } from "react-native";
+import { View, Text, Pressable, ScrollView, Image, Modal, ActivityIndicator, NativeModules, Platform } from "react-native";
 import * as Haptics from "expo-haptics";
 import * as Notifications from "expo-notifications";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
@@ -154,6 +154,15 @@ export default function HomeScreen() {
       
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       
+      // Iniciar serviço de foreground para notificação persistente (Android)
+      if (Platform.OS === "android" && NativeModules.VPNModule) {
+        try {
+          await NativeModules.VPNModule.startVPN();
+        } catch (e) {
+          console.log("Erro ao iniciar VPN nativa:", e);
+        }
+      }
+      
       // Enviar notificação de conexão bem-sucedida
       await sendNotification(
         "VPN Conectada",
@@ -165,6 +174,15 @@ export default function HomeScreen() {
   const handleDisconnect = async () => {
     setIsConnected(false);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    
+    // Parar serviço de foreground (Android)
+    if (Platform.OS === "android" && NativeModules.VPNModule) {
+      try {
+        await NativeModules.VPNModule.stopVPN();
+      } catch (e) {
+        console.log("Erro ao parar VPN nativa:", e);
+      }
+    }
     
     // Enviar notificação de desconexão
     await sendNotification(
