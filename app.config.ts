@@ -59,8 +59,6 @@ const config: ExpoConfig = {
   },
   plugins: [
     "expo-router",
-    ["expo-location", { locationAlwaysAndWhenInUsePermission: "Muaco VPN precisa de localização para selecionar servidor" }],
-    ["expo-notifications", { icon: "./assets/images/notification-icon.png" }],
     [
       "expo-splash-screen",
       {
