@@ -71,6 +71,9 @@ export default function HomeScreen() {
   const [isUpdating, setIsUpdating] = useState(false);
   const [showPermissionModal, setShowPermissionModal] = useState(false);
   const [protocol, setProtocol] = useState<"OpenVPN" | "WireGuard">("OpenVPN");
+  const [networkInfo, setNetworkInfo] = useState<any>(null);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [showErrorModal, setShowErrorModal] = useState(false);
   
   // Contadores
   const [connectionTime, setConnectionTime] = useState(0);
@@ -87,6 +90,24 @@ export default function HomeScreen() {
       }
     };
     setupNotifications();
+  }, []);
+
+  // Obter informações de rede
+  useEffect(() => {
+    const getNetworkInfo = async () => {
+      if (Platform.OS === "android" && NativeModules.VPNModule) {
+        try {
+          const info = await NativeModules.VPNModule.getNetworkInfo();
+          setNetworkInfo(info);
+        } catch (e) {
+          console.log("Erro ao obter info de rede:", e);
+        }
+      }
+    };
+
+    getNetworkInfo();
+    const interval = setInterval(getNetworkInfo, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   // Timer para conexão
@@ -119,6 +140,11 @@ export default function HomeScreen() {
     return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
 
+  const formatData = (mb: number) => {
+    if (mb < 1024) return `${mb.toFixed(2)} MB`;
+    return `${(mb / 1024).toFixed(2)} GB`;
+  };
+
   const sendNotification = async (title: string, body: string) => {
     await Notifications.scheduleNotificationAsync({
       content: {
@@ -132,13 +158,20 @@ export default function HomeScreen() {
   };
 
   const handleConnect = async () => {
-    if (!selectedServer) return;
+    // Verificar se há conexão de internet
+    if (!networkInfo?.isConnected) {
+      setErrorMessage("Sem conexão de internet. Ative WiFi ou Dados Móveis.");
+      setShowErrorModal(true);
+      return;
+    }
+
     setShowPermissionModal(true);
   };
 
   const confirmConnection = async () => {
     setShowPermissionModal(false);
     setIsConnecting(true);
+    setErrorMessage("");
     
     // Enviar notificação de conexão iniciada
     await sendNotification(
@@ -146,66 +179,78 @@ export default function HomeScreen() {
       `Conectando a ${selectedServer.name}...`
     );
 
-    // Simular conexão VPN real com 5 segundos
-    setTimeout(async () => {
-      setIsConnecting(false);
-      setIsConnected(true);
-      setProtocol(selectedServer.protocol as "OpenVPN" | "WireGuard");
-      
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      
-      // Iniciar serviço de foreground para notificação persistente (Android)
+    try {
+      // Chamar VPN real via módulo nativo
       if (Platform.OS === "android" && NativeModules.VPNModule) {
-        try {
-          await NativeModules.VPNModule.startVPN();
-        } catch (e) {
-          console.log("Erro ao iniciar VPN nativa:", e);
-        }
+        await NativeModules.VPNModule.startVPN(
+          selectedServer.protocol,
+          selectedServer.ip
+        );
+      }
+
+      // Simular conexão com 3 segundos
+      setTimeout(async () => {
+        setIsConnecting(false);
+        setIsConnected(true);
+        setProtocol(selectedServer.protocol as "OpenVPN" | "WireGuard");
+        
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        
+        // Enviar notificação de conexão bem-sucedida
+        await sendNotification(
+          "VPN Conectada",
+          `Conectado a ${selectedServer.name} via ${selectedServer.protocol}`
+        );
+      }, 3000);
+    } catch (error: any) {
+      setIsConnecting(false);
+      
+      if (error?.message?.includes("duas VPN")) {
+        setErrorMessage("Não pode usar duas VPN ao mesmo tempo");
+      } else if (error?.message?.includes("Permissão")) {
+        setErrorMessage("Permissão de VPN não concedida");
+      } else {
+        setErrorMessage(error?.message || "Erro ao conectar VPN");
       }
       
-      // Enviar notificação de conexão bem-sucedida
-      await sendNotification(
-        "VPN Conectada",
-        `Conectado a ${selectedServer.name} via ${selectedServer.protocol} (Porta ${selectedServer.port})`
-      );
-    }, 5000);
+      setShowErrorModal(true);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    }
   };
 
   const handleDisconnect = async () => {
-    setIsConnected(false);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    
-    // Parar serviço de foreground (Android)
-    if (Platform.OS === "android" && NativeModules.VPNModule) {
-      try {
+    try {
+      // Parar VPN real
+      if (Platform.OS === "android" && NativeModules.VPNModule) {
         await NativeModules.VPNModule.stopVPN();
-      } catch (e) {
-        console.log("Erro ao parar VPN nativa:", e);
       }
+
+      setIsConnected(false);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      
+      // Enviar notificação de desconexão
+      await sendNotification(
+        "VPN Desconectada",
+        `Desconectado de ${selectedServer.name}`
+      );
+    } catch (error: any) {
+      setErrorMessage(error?.message || "Erro ao desconectar VPN");
+      setShowErrorModal(true);
     }
-    
-    // Enviar notificação de desconexão
-    await sendNotification(
-      "VPN Desconectada",
-      `Desconectado de ${selectedServer.name} após ${formatTime(connectionTime)}`
-    );
   };
 
   const handleUpdateServers = async () => {
     setIsUpdating(true);
     
-    // Enviar notificação de atualização
     await sendNotification(
       "Atualizando Servidores",
       "Buscando servidores mais rápidos..."
     );
     
-    // Simular atualização de servidores com 4 segundos
     setTimeout(async () => {
       setIsUpdating(false);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       
-      // Enviar notificação de atualização concluída
       await sendNotification(
         "Servidores Atualizados",
         "Lista de servidores atualizada com sucesso"
@@ -246,6 +291,29 @@ export default function HomeScreen() {
         <ScrollView showsVerticalScrollIndicator={false} className="flex-1">
           <View className="px-4 py-6 gap-6">
             
+            {/* Relatório de Rede */}
+            {networkInfo && (
+              <View className="bg-gray-900 rounded-2xl p-4 border border-gray-800">
+                <Text className="text-gray-400 text-xs font-bold mb-3">CONEXÃO</Text>
+                <View className="gap-2">
+                  <View className="flex-row justify-between items-center">
+                    <Text className="text-gray-300 text-sm">Tipo:</Text>
+                    <Text className="text-white font-bold">{networkInfo.type}</Text>
+                  </View>
+                  <View className="flex-row justify-between items-center">
+                    <Text className="text-gray-300 text-sm">IP Original:</Text>
+                    <Text className="text-white font-bold">{networkInfo.originalIP}</Text>
+                  </View>
+                  <View className="flex-row justify-between items-center">
+                    <Text className="text-gray-300 text-sm">Status:</Text>
+                    <Text className={`font-bold ${networkInfo.isConnected ? "text-green-500" : "text-red-500"}`}>
+                      {networkInfo.isConnected ? "Conectado" : "Desconectado"}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            )}
+
             {/* Status Card */}
             <View className="bg-gray-900 rounded-2xl p-4 border border-gray-800">
               <Text className="text-gray-400 text-xs font-bold mb-3">STATUS</Text>
@@ -266,189 +334,141 @@ export default function HomeScreen() {
               <Pressable
                 onPress={isConnected ? handleDisconnect : handleConnect}
                 disabled={isConnecting}
-                className="w-48 h-48 rounded-full bg-gradient-to-br from-blue-600 to-blue-700 items-center justify-center border-8 border-green-600"
+                style={({ pressed }) => [
+                  {
+                    width: 160,
+                    height: 160,
+                    borderRadius: 80,
+                    backgroundColor: isConnected ? "#10B981" : "#0052CC",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    opacity: pressed ? 0.8 : 1,
+                    transform: [{ scale: pressed ? 0.95 : 1 }],
+                  }
+                ]}
               >
-                {({ pressed }) => (
-                  <View className="items-center" style={{ opacity: pressed ? 0.8 : 1 }}>
-                    <MaterialIcons 
-                      name={isConnected ? "lock" : "lock-open"} 
-                      size={60} 
-                      color={isConnected ? "#FFD700" : "#FFFFFF"} 
-                    />
-                    <Text className="text-white text-xl font-bold mt-4">
-                      {isConnecting ? "..." : isConnected ? "Conectado" : "Conectar"}
-                    </Text>
-                  </View>
+                {isConnecting ? (
+                  <ActivityIndicator size="large" color="white" />
+                ) : (
+                  <MaterialIcons 
+                    name={isConnected ? "lock-open" : "lock"} 
+                    size={60} 
+                    color="white" 
+                  />
                 )}
               </Pressable>
+              <Text className="text-white text-lg font-bold mt-4">
+                {isConnecting ? "Conectando..." : isConnected ? "Conectado" : "Conectar"}
+              </Text>
             </View>
+
+            {/* Tempo e Dados */}
+            {isConnected && (
+              <View className="gap-3">
+                <View className="bg-gray-900 rounded-2xl p-4 border border-gray-800">
+                  <Text className="text-gray-400 text-xs font-bold mb-2">TEMPO</Text>
+                  <Text className="text-white text-2xl font-bold">{formatTime(connectionTime)}</Text>
+                </View>
+                <View className="bg-gray-900 rounded-2xl p-4 border border-gray-800">
+                  <Text className="text-gray-400 text-xs font-bold mb-2">DADOS USADOS</Text>
+                  <Text className="text-white text-2xl font-bold">{formatData(dataUsed)}</Text>
+                </View>
+              </View>
+            )}
 
             {/* Servidor Selecionado */}
             <View className="bg-gray-900 rounded-2xl p-4 border border-gray-800">
               <Text className="text-gray-400 text-xs font-bold mb-3">SERVIDOR SELECIONADO</Text>
               <View className="flex-row items-center gap-3">
-                <Image 
-                  source={selectedServer.logo} 
-                  style={{ width: 40, height: 40, borderRadius: 8 }}
-                />
+                <View className="w-12 h-12 bg-gray-800 rounded-full items-center justify-center">
+                  <Text className="text-white font-bold text-xs">{selectedServer.operator.substring(0, 2)}</Text>
+                </View>
                 <View className="flex-1">
                   <Text className="text-white font-bold">{selectedServer.name}</Text>
-                  <Text className="text-gray-400 text-xs">{protocol} Porta {selectedServer.port}</Text>
-                  <Text className="text-green-400 text-xs font-bold">Ping: {selectedServer.ping}</Text>
+                  <Text className="text-gray-400 text-xs">{selectedServer.protocol} Porta {selectedServer.port}</Text>
+                  <Text className="text-green-500 text-xs font-bold">Ping: {selectedServer.ping}</Text>
                 </View>
               </View>
             </View>
 
-            {/* Protocolo Selecionado */}
-            {isConnected && (
-              <View className="bg-gray-900 rounded-2xl p-4 border border-gray-800">
-                <Text className="text-gray-400 text-xs font-bold mb-3">PROTOCOLO</Text>
-                <View className="flex-row gap-2">
-                  <Pressable
-                    onPress={() => switchProtocol("OpenVPN")}
-                    className={`flex-1 py-3 rounded-lg items-center ${
-                      protocol === "OpenVPN" ? "bg-blue-600" : "bg-gray-800"
-                    }`}
-                  >
-                    <Text className="text-white font-bold">OpenVPN</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => switchProtocol("WireGuard")}
-                    className={`flex-1 py-3 rounded-lg items-center ${
-                      protocol === "WireGuard" ? "bg-blue-600" : "bg-gray-800"
-                    }`}
-                  >
-                    <Text className="text-white font-bold">WireGuard</Text>
-                  </Pressable>
-                </View>
-              </View>
-            )}
-
-            {/* Dados e Tempo */}
-            {isConnected && (
-              <View className="gap-3">
-                <View className="bg-gray-900 rounded-2xl p-4 border border-gray-800">
-                  <View className="flex-row items-center gap-2 mb-2">
-                    <MaterialIcons name="schedule" size={16} color="#10B981" />
-                    <Text className="text-gray-400 text-xs">TEMPO CONECTADO</Text>
-                  </View>
-                  <Text className="text-white text-2xl font-bold">{formatTime(connectionTime)}</Text>
-                </View>
-
-                <View className="bg-gray-900 rounded-2xl p-4 border border-gray-800">
-                  <View className="flex-row items-center gap-2 mb-2">
-                    <MaterialIcons name="data-usage" size={16} color="#10B981" />
-                    <Text className="text-gray-400 text-xs">DADOS UTILIZADOS</Text>
-                  </View>
-                  <Text className="text-white text-2xl font-bold">{dataUsed.toFixed(2)} MB</Text>
-                </View>
-              </View>
-            )}
-
-            {/* Servidores */}
-            <View className="gap-3">
-              <Text className="text-white font-bold">SERVIDORES ANGOLA</Text>
-              {SERVERS.map((server) => (
+            {/* Protocolo */}
+            <View className="bg-gray-900 rounded-2xl p-4 border border-gray-800">
+              <Text className="text-gray-400 text-xs font-bold mb-3">PROTOCOLO</Text>
+              <View className="flex-row gap-3">
                 <Pressable
-                  key={server.id}
-                  onPress={() => !isConnected && setSelectedServer(server)}
-                  disabled={isConnected}
+                  onPress={() => switchProtocol("OpenVPN")}
+                  className={`flex-1 py-3 rounded-lg items-center ${protocol === "OpenVPN" ? "bg-blue-600" : "bg-gray-800"}`}
                 >
-                  {({ pressed }) => (
-                    <View
-                      className={`flex-row items-center gap-3 p-3 rounded-xl border ${
-                        selectedServer.id === server.id
-                          ? "bg-blue-900/30 border-blue-500"
-                          : "bg-gray-900 border-gray-800"
-                      }`}
-                      style={{ opacity: pressed ? 0.7 : 1 }}
-                    >
-                      <Image 
-                        source={server.logo} 
-                        style={{ width: 40, height: 40, borderRadius: 8 }}
-                      />
-                      <View className="flex-1">
-                        <Text className="text-white font-bold">{server.name}</Text>
-                        <Text className="text-gray-400 text-xs">{server.protocol} Porta {server.port}</Text>
-                      </View>
-                      {selectedServer.id === server.id && (
-                        <MaterialIcons name="check-circle" size={20} color="#3B82F6" />
-                      )}
-                    </View>
-                  )}
+                  <Text className="text-white font-bold">OpenVPN</Text>
                 </Pressable>
-              ))}
+                <Pressable
+                  onPress={() => switchProtocol("WireGuard")}
+                  className={`flex-1 py-3 rounded-lg items-center ${protocol === "WireGuard" ? "bg-blue-600" : "bg-gray-800"}`}
+                >
+                  <Text className="text-white font-bold">WireGuard</Text>
+                </Pressable>
+              </View>
             </View>
+
+            {/* Botão Atualizar Servidores */}
+            <Pressable
+              onPress={handleUpdateServers}
+              disabled={isUpdating}
+              className={`py-3 rounded-lg items-center ${isUpdating ? "bg-gray-700" : "bg-blue-600"}`}
+            >
+              {isUpdating ? (
+                <ActivityIndicator size="small" color="white" />
+              ) : (
+                <Text className="text-white font-bold">Atualizar Servidor</Text>
+              )}
+            </Pressable>
           </View>
         </ScrollView>
+      </View>
 
-        {/* Modal Dashboard */}
-        <Modal visible={showDashboard} transparent animationType="fade">
-          <Pressable 
-            onPress={() => setShowDashboard(false)}
-            className="flex-1 bg-black/50 justify-end"
-          >
-            <View className="bg-gray-900 rounded-t-3xl p-6 gap-4 border-t border-gray-800">
-              <Text className="text-white text-lg font-bold">Dashboard</Text>
-              
+      {/* Modal de Permissão de VPN */}
+      <Modal visible={showPermissionModal} transparent animationType="fade">
+        <View className="flex-1 bg-black/80 justify-center items-center px-4">
+          <View className="bg-gray-900 rounded-2xl p-6 w-full max-w-sm border border-gray-800">
+            <MaterialIcons name="lock" size={48} color="#0052CC" style={{ alignSelf: "center", marginBottom: 16 }} />
+            <Text className="text-white text-xl font-bold text-center mb-2">Permissão de VPN</Text>
+            <Text className="text-gray-400 text-sm text-center mb-6">
+              O Android vai pedir permissão para usar VPN. Clique em "OK" para continuar.
+            </Text>
+            <View className="flex-row gap-3">
               <Pressable
-                onPress={handleUpdateServers}
-                disabled={isUpdating}
-                className="bg-blue-600 rounded-xl p-4 items-center"
+                onPress={() => setShowPermissionModal(false)}
+                className="flex-1 py-3 rounded-lg bg-gray-800 items-center"
               >
-                {isUpdating ? (
-                  <ActivityIndicator color="white" />
-                ) : (
-                  <View className="flex-row items-center gap-2">
-                    <MaterialIcons name="refresh" size={20} color="white" />
-                    <Text className="text-white font-bold">Atualizar Servidor</Text>
-                  </View>
-                )}
+                <Text className="text-white font-bold">Cancelar</Text>
               </Pressable>
-
               <Pressable
-                onPress={() => setShowDashboard(false)}
-                className="bg-gray-800 rounded-xl p-4 items-center"
+                onPress={confirmConnection}
+                className="flex-1 py-3 rounded-lg bg-blue-600 items-center"
               >
-                <Text className="text-white font-bold">Fechar</Text>
+                <Text className="text-white font-bold">Permitir</Text>
               </Pressable>
-            </View>
-          </Pressable>
-        </Modal>
-
-        {/* Modal Permissão VPN */}
-        <Modal visible={showPermissionModal} transparent animationType="fade">
-          <View className="flex-1 bg-black/70 justify-center items-center px-4">
-            <View className="bg-gray-900 rounded-2xl p-6 gap-4 border border-gray-800">
-              <MaterialIcons name="vpn-lock" size={48} color="#3B82F6" />
-              
-              <Text className="text-white text-lg font-bold text-center">
-                Permissão de VPN
-              </Text>
-              
-              <Text className="text-gray-400 text-sm text-center">
-                O aplicativo Muaco VPN precisa de permissão para criar uma conexão VPN segura. Você deseja permitir?
-              </Text>
-
-              <View className="gap-3">
-                <Pressable
-                  onPress={confirmConnection}
-                  className="bg-blue-600 rounded-xl p-4 items-center"
-                >
-                  <Text className="text-white font-bold">Permitir</Text>
-                </Pressable>
-
-                <Pressable
-                  onPress={() => setShowPermissionModal(false)}
-                  className="bg-gray-800 rounded-xl p-4 items-center"
-                >
-                  <Text className="text-white font-bold">Cancelar</Text>
-                </Pressable>
-              </View>
             </View>
           </View>
-        </Modal>
-      </View>
+        </View>
+      </Modal>
+
+      {/* Modal de Erro */}
+      <Modal visible={showErrorModal} transparent animationType="fade">
+        <View className="flex-1 bg-black/80 justify-center items-center px-4">
+          <View className="bg-gray-900 rounded-2xl p-6 w-full max-w-sm border border-gray-800">
+            <MaterialIcons name="error" size={48} color="#EF4444" style={{ alignSelf: "center", marginBottom: 16 }} />
+            <Text className="text-white text-xl font-bold text-center mb-2">Erro</Text>
+            <Text className="text-gray-400 text-sm text-center mb-6">{errorMessage}</Text>
+            <Pressable
+              onPress={() => setShowErrorModal(false)}
+              className="py-3 rounded-lg bg-blue-600 items-center"
+            >
+              <Text className="text-white font-bold">OK</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </ScreenContainer>
   );
 }
