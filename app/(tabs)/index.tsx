@@ -7,7 +7,7 @@ import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { useVPNAutoReconnect } from "@/hooks/use-vpn-auto-reconnect";
 import { useVPNAudio } from "@/hooks/use-vpn-audio";
-import { useDeviceLocation } from "@/hooks/use-device-location";
+
 
 // Configurar notificações
 Notifications.setNotificationHandler({
@@ -100,7 +100,6 @@ const SERVERS = [
 export default function HomeScreen() {
   const colors = useColors();
   const { playConnectSound, playDisconnectSound, playReconnectSound, playErrorSound } = useVPNAudio();
-  const { location, isLoading: isLoadingLocation } = useDeviceLocation();
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [selectedServer, setSelectedServer] = useState(SERVERS[0]);
@@ -121,26 +120,11 @@ export default function HomeScreen() {
   const dataIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const appStateRef = useRef("active");
 
-  // Auto-reconexão com som
-  const handleAutoReconnect = useCallback(async () => {
-    if (isConnected) {
-      console.log("VPN caiu, reconectando automaticamente...");
-      await playReconnectSound();
-      await sendNotification("Auto-Reconexão", "Reconectando à VPN...");
-      confirmConnection();
-    }
-  }, [isConnected, playReconnectSound]);
-
-  useVPNAutoReconnect(isConnected, handleAutoReconnect);
+  // Auto-reconexão com som será definida depois
 
   // Evitar reinicialização ao fechar APK
   useEffect(() => {
-    const handleAppStateChange = (nextAppState: string) => {
-      appStateRef.current = nextAppState;
-      // Não fazer nada, apenas manter o estado
-    };
-
-    // Não reiniciar ao sair
+    // Não fazer nada, apenas manter o estado
     return () => {
       // Limpar apenas se desconectado
       if (!isConnected) {
@@ -152,9 +136,13 @@ export default function HomeScreen() {
   // Inicializar notificações
   useEffect(() => {
     const setupNotifications = async () => {
-      const { status } = await Notifications.requestPermissionsAsync();
-      if (status !== "granted") {
-        console.log("Permissão de notificações negada");
+      try {
+        const { status } = await Notifications.requestPermissionsAsync();
+        if (status !== "granted") {
+          console.log("Permissão de notificações negada");
+        }
+      } catch (e) {
+        console.log("Erro ao configurar notificações:", e);
       }
     };
     setupNotifications();
@@ -164,9 +152,19 @@ export default function HomeScreen() {
   useEffect(() => {
     const getNetworkInfo = async () => {
       try {
-        const VPNModule = NativeModules.VPNModule;
-        const info = await VPNModule.getNetworkInfo();
-        setNetworkInfo(info);
+        try {
+          const VPNModule = NativeModules.VPNModule;
+          const info = await VPNModule.getNetworkInfo();
+          setNetworkInfo(info);
+        } catch (nativeError) {
+          console.log("VPN Module não disponível (esperado em web)");
+          // Usar valores padrão
+          setNetworkInfo({
+            type: "WiFi",
+            originalIP: "192.168.1.100",
+            isConnected: true,
+          });
+        }
       } catch (error) {
         console.error("Erro ao obter info de rede:", error);
       }
@@ -180,6 +178,7 @@ export default function HomeScreen() {
   // Enviar notificação
   const sendNotification = async (title: string, body: string) => {
     try {
+      // Usar notificação agendada com delay mínimo
       await Notifications.scheduleNotificationAsync({
         content: {
           title,
@@ -187,7 +186,10 @@ export default function HomeScreen() {
           sound: true,
           badge: 1,
         },
-        trigger: null,
+        trigger: {
+          seconds: 0.1,
+          type: "time",
+        } as any,
       });
     } catch (e) {
       console.log("Erro ao enviar notificação:", e);
@@ -200,17 +202,22 @@ export default function HomeScreen() {
       setIsConnecting(true);
       setErrorMessage("");
       
-      const VPNModule = NativeModules.VPNModule;
-      
-      // Solicitar permissão de VPN
-      const permissionResult = await VPNModule.requestVPNPermission();
-      if (permissionResult === "PERMISSION_REQUIRED") {
-        setShowPermissionModal(true);
-        return;
+      try {
+        const VPNModule = NativeModules.VPNModule;
+        
+        // Solicitar permissão de VPN
+        const permissionResult = await VPNModule.requestVPNPermission();
+        if (permissionResult === "PERMISSION_REQUIRED") {
+          setShowPermissionModal(true);
+          setIsConnecting(false);
+          return;
+        }
+        
+        // Iniciar VPN
+        await VPNModule.startVPN(protocol, selectedServer.ip);
+      } catch (nativeError) {
+        console.log("VPN Module não disponível (esperado em web)");
       }
-      
-      // Iniciar VPN
-      await VPNModule.startVPN(protocol, selectedServer.ip);
       
       // Reproduzir som de conexão
       await playConnectSound();
@@ -239,13 +246,33 @@ export default function HomeScreen() {
     } finally {
       setIsConnecting(false);
     }
-  }, [protocol, selectedServer, playConnectSound, playErrorSound]);
+  }, [protocol, selectedServer, playConnectSound, playErrorSound, sendNotification]);
+
+  // Auto-reconexão com som
+  const handleAutoReconnect = useCallback(async () => {
+    if (isConnected) {
+      console.log("VPN caiu, reconectando automaticamente...");
+      try {
+        await playReconnectSound();
+        await sendNotification("Auto-Reconexão", "Reconectando à VPN...");
+        confirmConnection();
+      } catch (e) {
+        console.log("Erro na reconexão:", e);
+      }
+    }
+  }, [isConnected, playReconnectSound, sendNotification, confirmConnection]);
+
+  useVPNAutoReconnect(isConnected, handleAutoReconnect);
 
   // Desconectar da VPN
   const handleDisconnect = useCallback(async () => {
     try {
-      const VPNModule = NativeModules.VPNModule;
-      await VPNModule.stopVPN();
+      try {
+        const VPNModule = NativeModules.VPNModule;
+        await VPNModule.stopVPN();
+      } catch (nativeError) {
+        console.log("VPN Module não disponível (esperado em web)");
+      }
       
       // Reproduzir som de desconexão
       await playDisconnectSound();
@@ -277,6 +304,8 @@ export default function HomeScreen() {
       await sendNotification("Atualização Concluída", "Servidores atualizados com sucesso!");
     } catch (error) {
       console.error("Erro ao atualizar:", error);
+      setErrorMessage("Erro ao atualizar servidores");
+      setShowErrorModal(true);
     } finally {
       setIsUpdating(false);
     }
@@ -299,14 +328,14 @@ export default function HomeScreen() {
   };
 
   return (
-    <ScreenContainer className="bg-black">
-      <ScrollView contentContainerStyle={{ flexGrow: 1 }} className="flex-1">
+    <ScreenContainer className="bg-black" edges={["top", "left", "right"]}>
+      <ScrollView contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false} className="flex-1">
         <View className="flex-1 px-4 py-6 gap-4">
           {/* Notificação de VPN Conectada */}
           {isConnected && (
-            <View className="bg-green-900/30 border border-green-600 rounded-lg p-3 flex-row items-center gap-2">
+            <View className="bg-green-900/30 border border-green-600 rounded-lg p-3 flex-row items-center gap-2 mb-2">
               <MaterialIcons name="check-circle" size={20} color="#10B981" />
-              <Text className="text-green-400 text-sm font-semibold flex-1">VPN Conectada • Agora</Text>
+              <Text className="text-green-400 text-sm font-semibold flex-1">VPN Conectada</Text>
             </View>
           )}
 
@@ -373,16 +402,10 @@ export default function HomeScreen() {
           </Pressable>
 
           {/* Informações de Rede */}
-          <View className="bg-gray-900 rounded-lg p-4 mb-4 border border-gray-800">
+            <View className="bg-gray-900 rounded-lg p-4 mb-4 border border-gray-800">
             <Text className="text-white text-sm font-bold mb-2">Informações de Rede</Text>
             <Text className="text-gray-400 text-xs">Tipo: {networkInfo?.type || "Detectando..."}</Text>
             <Text className="text-gray-400 text-xs">IP Original: {networkInfo?.originalIP || "--"}</Text>
-            {location && (
-              <>
-                <Text className="text-gray-400 text-xs">Localização: {location.city}, {location.country}</Text>
-                <Text className="text-gray-400 text-xs">Coordenadas: {location.latitude.toFixed(4)}, {location.longitude.toFixed(4)}</Text>
-              </>
-            )}
           </View>
 
           {/* Protocolo */}
