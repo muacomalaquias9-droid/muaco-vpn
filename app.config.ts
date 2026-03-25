@@ -78,18 +78,14 @@ const config: ExpoConfig = {
       {
         android: {
           minSdkVersion: 24,
-          targetSdkVersion: 34,
-          compileSdkVersion: 34,
-          buildToolsVersion: "34.0.0",
+          targetSdkVersion: 35,
+          compileSdkVersion: 36,
+          buildToolsVersion: "36.0.0",
         },
       },
     ],
   ],
-  extra: {
-    eas: {
-      projectId: "muaco-vpn",
-    },
-  },
+
 };
 
 export default config;
