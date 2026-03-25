@@ -25,7 +25,7 @@ const SERVERS = [
     protocol: "OpenVPN", 
     port: 1194,
     ping: "12ms",
-    logo: require("@/assets/images/unitel-logo.png"),
+    logo: require("@/assets/images/unitel-logo.svg"),
     ip: "vpn-unitel.ao",
     country: "Angola",
     city: "Luanda",
@@ -39,7 +39,7 @@ const SERVERS = [
     protocol: "OpenVPN", 
     port: 1194,
     ping: "18ms",
-    logo: require("@/assets/images/africell-logo.png"),
+    logo: require("@/assets/images/africell-logo.svg"),
     ip: "vpn-africell-01.ao",
     country: "Angola",
     city: "Luanda",
@@ -53,7 +53,7 @@ const SERVERS = [
     protocol: "WireGuard", 
     port: 51820,
     ping: "22ms",
-    logo: require("@/assets/images/africell-logo.png"),
+    logo: require("@/assets/images/africell-logo.svg"),
     ip: "vpn-africell-02.ao",
     country: "Angola",
     city: "Luanda",
@@ -158,13 +158,6 @@ export default function HomeScreen() {
   };
 
   const handleConnect = async () => {
-    // Verificar se há conexão de internet
-    if (!networkInfo?.isConnected) {
-      setErrorMessage("Sem conexão de internet. Ative WiFi ou Dados Móveis.");
-      setShowErrorModal(true);
-      return;
-    }
-
     setShowPermissionModal(true);
   };
 
@@ -380,8 +373,12 @@ export default function HomeScreen() {
             <View className="bg-gray-900 rounded-2xl p-4 border border-gray-800">
               <Text className="text-gray-400 text-xs font-bold mb-3">SERVIDOR SELECIONADO</Text>
               <View className="flex-row items-center gap-3">
-                <View className="w-12 h-12 bg-gray-800 rounded-full items-center justify-center">
-                  <Text className="text-white font-bold text-xs">{selectedServer.operator.substring(0, 2)}</Text>
+                <View className="w-12 h-12 bg-gray-800 rounded-full items-center justify-center overflow-hidden">
+                  <Image 
+                    source={selectedServer.logo}
+                    style={{ width: 48, height: 48 }}
+                    resizeMode="contain"
+                  />
                 </View>
                 <View className="flex-1">
                   <Text className="text-white font-bold">{selectedServer.name}</Text>
