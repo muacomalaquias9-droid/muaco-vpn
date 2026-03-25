@@ -1,5 +1,10 @@
 import type { ExpoConfig } from "expo/config";
 
+// Definir NODE_ENV se não estiver definido
+if (!process.env.NODE_ENV) {
+  process.env.NODE_ENV = "production";
+}
+
 const config: ExpoConfig = {
   name: "Muaco VPN",
   slug: "muaco-vpn",
@@ -68,7 +73,23 @@ const config: ExpoConfig = {
         backgroundColor: "#ffffff",
       },
     ],
+    [
+      "expo-build-properties",
+      {
+        android: {
+          minSdkVersion: 24,
+          targetSdkVersion: 34,
+          compileSdkVersion: 34,
+          buildToolsVersion: "34.0.0",
+        },
+      },
+    ],
   ],
+  extra: {
+    eas: {
+      projectId: "muaco-vpn",
+    },
+  },
 };
 
 export default config;
