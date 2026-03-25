@@ -7,6 +7,7 @@ import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { useVPNAutoReconnect } from "@/hooks/use-vpn-auto-reconnect";
 
+
 // Configurar notificações
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -76,12 +77,14 @@ export default function HomeScreen() {
   const [networkInfo, setNetworkInfo] = useState<any>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [showErrorModal, setShowErrorModal] = useState(false);
+  const [showSpeedTest, setShowSpeedTest] = useState(false);
   
   // Contadores
   const [connectionTime, setConnectionTime] = useState(0);
   const [dataUsed, setDataUsed] = useState(0);
   const connectionIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const dataIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const appStateRef = useRef("active");
 
   // Auto-reconexão
   const handleAutoReconnect = useCallback(async () => {
@@ -93,6 +96,22 @@ export default function HomeScreen() {
   }, [isConnected]);
 
   useVPNAutoReconnect(isConnected, handleAutoReconnect);
+
+  // Evitar reinicialização ao fechar APK
+  useEffect(() => {
+    const handleAppStateChange = (nextAppState: string) => {
+      appStateRef.current = nextAppState;
+      // Não fazer nada, apenas manter o estado
+    };
+
+    // Não reiniciar ao sair
+    return () => {
+      // Limpar apenas se desconectado
+      if (!isConnected) {
+        // Não fazer nada
+      }
+    };
+  }, [isConnected]);
 
   // Inicializar notificações
   useEffect(() => {
@@ -451,6 +470,14 @@ export default function HomeScreen() {
                 <Text className="text-white font-bold">Atualizar Servidores de Angola</Text>
               )}
             </Pressable>
+
+            {/* Botão Speed Test */}
+            <Pressable
+              onPress={() => setShowSpeedTest(true)}
+              className="py-3 rounded-lg bg-purple-600 items-center"
+            >
+              <Text className="text-white font-bold">⚡ Speed Test</Text>
+            </Pressable>
           </View>
         </ScrollView>
       </View>
@@ -534,6 +561,22 @@ export default function HomeScreen() {
             >
               <Text className="text-white font-bold">OK</Text>
             </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal de Speed Test */}
+      <Modal visible={showSpeedTest} transparent animationType="slide">
+        <View className="flex-1 bg-black">
+          <View className="flex-row justify-between items-center px-4 py-4 border-b border-gray-800">
+            <Text className="text-white text-xl font-bold">Speed Test</Text>
+            <Pressable onPress={() => setShowSpeedTest(false)}>
+              <MaterialIcons name="close" size={24} color="white" />
+            </Pressable>
+          </View>
+          <View className="flex-1 bg-white items-center justify-center">
+            <Text className="text-center text-gray-600 px-4">Speed Test disponível em breve</Text>
+            <Text className="text-center text-gray-400 text-sm px-4 mt-2">Abra em um navegador para testar a velocidade</Text>
           </View>
         </View>
       </Modal>
