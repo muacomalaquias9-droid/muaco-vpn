@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef } from "react";
-import { View, Text, Pressable, ScrollView, Image, Modal, ActivityIndicator, NativeModules, Platform } from "react-native";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { View, Text, Pressable, ScrollView, Image, Modal, ActivityIndicator, NativeModules, Platform, FlatList } from "react-native";
 import * as Haptics from "expo-haptics";
 import * as Notifications from "expo-notifications";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
+import { useVPNAutoReconnect } from "@/hooks/use-vpn-auto-reconnect";
 
 // Configurar notificações
 Notifications.setNotificationHandler({
@@ -70,6 +71,7 @@ export default function HomeScreen() {
   const [showDashboard, setShowDashboard] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [showPermissionModal, setShowPermissionModal] = useState(false);
+  const [showServerList, setShowServerList] = useState(false);
   const [protocol, setProtocol] = useState<"OpenVPN" | "WireGuard">("OpenVPN");
   const [networkInfo, setNetworkInfo] = useState<any>(null);
   const [errorMessage, setErrorMessage] = useState("");
@@ -80,6 +82,17 @@ export default function HomeScreen() {
   const [dataUsed, setDataUsed] = useState(0);
   const connectionIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const dataIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Auto-reconexão
+  const handleAutoReconnect = useCallback(async () => {
+    if (isConnected) {
+      console.log("VPN caiu, reconectando automaticamente...");
+      await sendNotification("Auto-Reconexão", "Reconectando à VPN...");
+      confirmConnection();
+    }
+  }, [isConnected]);
+
+  useVPNAutoReconnect(isConnected, handleAutoReconnect);
 
   // Inicializar notificações
   useEffect(() => {
@@ -233,11 +246,18 @@ export default function HomeScreen() {
   };
 
   const handleUpdateServers = async () => {
+    // Verificar se há internet
+    if (!networkInfo?.isConnected) {
+      setErrorMessage("Sem internet. Ative WiFi ou Dados Móveis para atualizar servidores.");
+      setShowErrorModal(true);
+      return;
+    }
+
     setIsUpdating(true);
     
     await sendNotification(
       "Atualizando Servidores",
-      "Buscando servidores mais rápidos..."
+      "Buscando servidores mais rápidos de Angola..."
     );
     
     setTimeout(async () => {
@@ -246,7 +266,7 @@ export default function HomeScreen() {
       
       await sendNotification(
         "Servidores Atualizados",
-        "Lista de servidores atualizada com sucesso"
+        "Lista de servidores de Angola atualizada com sucesso"
       );
     }, 4000);
   };
@@ -261,6 +281,12 @@ export default function HomeScreen() {
       "Protocolo Alterado",
       `Protocolo alterado para ${newProtocol}`
     );
+  };
+
+  const handleSelectServer = (server: any) => {
+    setSelectedServer(server);
+    setShowServerList(false);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
   return (
@@ -369,24 +395,30 @@ export default function HomeScreen() {
               </View>
             )}
 
-            {/* Servidor Selecionado */}
-            <View className="bg-gray-900 rounded-2xl p-4 border border-gray-800">
+            {/* Servidor Selecionado com Botão para Listar */}
+            <Pressable
+              onPress={() => setShowServerList(true)}
+              className="bg-gray-900 rounded-2xl p-4 border border-gray-800"
+            >
               <Text className="text-gray-400 text-xs font-bold mb-3">SERVIDOR SELECIONADO</Text>
-              <View className="flex-row items-center gap-3">
-                <View className="w-12 h-12 bg-gray-800 rounded-full items-center justify-center overflow-hidden">
-                  <Image 
-                    source={selectedServer.logo}
-                    style={{ width: 48, height: 48 }}
-                    resizeMode="contain"
-                  />
+              <View className="flex-row items-center justify-between">
+                <View className="flex-row items-center gap-3 flex-1">
+                  <View className="w-12 h-12 bg-gray-800 rounded-full items-center justify-center overflow-hidden">
+                    <Image 
+                      source={selectedServer.logo}
+                      style={{ width: 48, height: 48 }}
+                      resizeMode="contain"
+                    />
+                  </View>
+                  <View className="flex-1">
+                    <Text className="text-white font-bold">{selectedServer.name}</Text>
+                    <Text className="text-gray-400 text-xs">{selectedServer.protocol} Porta {selectedServer.port}</Text>
+                    <Text className="text-green-500 text-xs font-bold">Ping: {selectedServer.ping}</Text>
+                  </View>
                 </View>
-                <View className="flex-1">
-                  <Text className="text-white font-bold">{selectedServer.name}</Text>
-                  <Text className="text-gray-400 text-xs">{selectedServer.protocol} Porta {selectedServer.port}</Text>
-                  <Text className="text-green-500 text-xs font-bold">Ping: {selectedServer.ping}</Text>
-                </View>
+                <MaterialIcons name="chevron-right" size={24} color="#0052CC" />
               </View>
-            </View>
+            </Pressable>
 
             {/* Protocolo */}
             <View className="bg-gray-900 rounded-2xl p-4 border border-gray-800">
@@ -416,7 +448,7 @@ export default function HomeScreen() {
               {isUpdating ? (
                 <ActivityIndicator size="small" color="white" />
               ) : (
-                <Text className="text-white font-bold">Atualizar Servidor</Text>
+                <Text className="text-white font-bold">Atualizar Servidores de Angola</Text>
               )}
             </Pressable>
           </View>
@@ -447,6 +479,45 @@ export default function HomeScreen() {
               </Pressable>
             </View>
           </View>
+        </View>
+      </Modal>
+
+      {/* Modal de Lista de Servidores */}
+      <Modal visible={showServerList} transparent animationType="slide">
+        <View className="flex-1 bg-black">
+          <View className="flex-row justify-between items-center px-4 py-4 border-b border-gray-800">
+            <Text className="text-white text-xl font-bold">Selecionar Servidor</Text>
+            <Pressable onPress={() => setShowServerList(false)}>
+              <MaterialIcons name="close" size={24} color="white" />
+            </Pressable>
+          </View>
+
+          <FlatList
+            data={SERVERS}
+            keyExtractor={(item) => item.id.toString()}
+            renderItem={({ item }) => (
+              <Pressable
+                onPress={() => handleSelectServer(item)}
+                className={`px-4 py-4 border-b border-gray-800 flex-row items-center gap-3 ${selectedServer.id === item.id ? "bg-gray-900" : ""}`}
+              >
+                <View className="w-12 h-12 bg-gray-800 rounded-full items-center justify-center overflow-hidden">
+                  <Image 
+                    source={item.logo}
+                    style={{ width: 48, height: 48 }}
+                    resizeMode="contain"
+                  />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-white font-bold">{item.name}</Text>
+                  <Text className="text-gray-400 text-xs">{item.protocol} Porta {item.port}</Text>
+                  <Text className="text-green-500 text-xs font-bold">Ping: {item.ping}</Text>
+                </View>
+                {selectedServer.id === item.id && (
+                  <MaterialIcons name="check-circle" size={24} color="#10B981" />
+                )}
+              </Pressable>
+            )}
+          />
         </View>
       </Modal>
 
