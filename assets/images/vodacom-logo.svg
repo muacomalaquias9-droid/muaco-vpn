@@ -1,0 +1,11 @@
+<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <!-- Fundo -->
+  <rect width="200" height="200" fill="#E60000"/>
+  
+  <!-- Símbolo Vodacom -->
+  <circle cx="100" cy="80" r="30" fill="white"/>
+  <path d="M 70 130 Q 70 110 100 110 Q 130 110 130 130 L 130 160 Q 130 170 100 170 Q 70 170 70 160 Z" fill="white"/>
+  
+  <!-- Texto V -->
+  <text x="100" y="155" font-size="32" font-weight="bold" fill="#E60000" text-anchor="middle" font-family="Arial">V</text>
+</svg>
